@@ -353,7 +353,6 @@ app.add_middleware(
 # Health-check
 # ---------------------------------------------------------------------------
 @app.get("/health")
-@app.get("/")
 async def health_check():
     return {"status": "ok"}
 
@@ -580,3 +579,23 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         "lead_id": lead_id,
         "message": "Заявка успешно зарегистрирована",
     }
+
+
+# ---------------------------------------------------------------------------
+# Раздача собранного фронтенда калькулятора (dist) через FastAPI
+# ---------------------------------------------------------------------------
+from fastapi.staticfiles import StaticFiles
+
+# Проверяем пути к папке dist (в корне /app/dist или относительно main.py)
+dist_dir = "dist"
+if not os.path.isdir(dist_dir):
+    dist_dir = os.path.join(os.path.dirname(__file__), "..", "dist")
+if not os.path.isdir(dist_dir):
+    dist_dir = os.path.join(os.path.dirname(__file__), "dist")
+
+if os.path.isdir(dist_dir):
+    logger.info(f"Подключение статических файлов фронтенда из: {dist_dir}")
+    app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
+else:
+    logger.warning("Директория dist не найдена. Статический фронтенд не примонтирован.")
+

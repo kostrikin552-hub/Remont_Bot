@@ -1,30 +1,11 @@
 services:
   # ==============================================================================
-  # 1. Фронтенд: Telegram Mini App (React + Vite + Tailwind CSS)
+  # Единый монолитный сервис: Бэкенд (FastAPI + aiogram 3) + Фронтенд (dist)
   # ==============================================================================
   - type: web
-    name: remont-mini-app
-    env: static
-    buildCommand: npm install --legacy-peer-deps && npm run build
-    staticPublishPath: ./dist
-    envVars:
-      - key: VITE_SUPABASE_URL
-        sync: false
-      - key: VITE_SUPABASE_ANON_KEY
-        sync: false
-      - key: VITE_BACKEND_URL
-        fromService:
-          type: web
-          name: remont-backend
-          property: host
-
-  # ==============================================================================
-  # 2. Бэкенд: FastAPI + aiogram 3 (Мастер-бот платформы и вебхуки)
-  # ==============================================================================
-  - type: web
-    name: remont-backend
+    name: remont-app
     env: docker
-    dockerfilePath: backend/Dockerfile
+    dockerfilePath: ./Dockerfile
     dockerContext: .
     plan: free
     healthCheckPath: /health
@@ -38,10 +19,10 @@ services:
       - key: BASE_WEBHOOK_URL
         fromService:
           type: web
-          name: remont-backend
+          name: remont-app
           property: host
       - key: MINI_APP_URL
         fromService:
           type: web
-          name: remont-mini-app
+          name: remont-app
           property: host
