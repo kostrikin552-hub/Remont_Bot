@@ -1,47 +1,25 @@
-# ==============================================================================
-# Этап 1: Сборка фронтенда калькулятора (React + Vite + Tailwind CSS)
-# ==============================================================================
-FROM node:20-slim AS frontend-builder
-
+# ЭТАП 1: Сборка фронтенда на Node.js
+FROM node:20-alpine AS builder
 WORKDIR /app
-
-# Копируем конфигурационные файлы пакетов
-COPY package*.json bun.lock* ./
-
-# Устанавливаем зависимости фронтенда
+COPY package*.json ./
 RUN npm install --legacy-peer-deps
-
-# Копируем исходники фронтенда и конфигурацию сборщика
-COPY index.html tsconfig*.json vite.config.ts ./
-COPY src/ ./src/
-
-# Сборка production-бандла в директорию /app/dist
+COPY . .
 RUN npm run build
 
-# ==============================================================================
-# Этап 2: Запуск монолитного сервиса FastAPI + aiogram 3 (Python 3.11)
-# ==============================================================================
+# ЭТАП 2: Запуск бэкенда на Python
 FROM python:3.11-slim
-
 WORKDIR /app
 
-ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1 \
-    PYTHONPATH=/app \
-    PORT=10000
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
 
-# Установка Python зависимостей
-COPY backend/requirements.txt ./requirements.txt
+COPY backend/requirements.txt* requirements.txt* ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Копирование исходного кода бэкенда
+# Копируем бэкенд и собранную папку dist из первого этапа
 COPY backend/ /app/
-COPY backend/ /app/backend/
-
-# Копирование собранного фронтенда из первого этапа
-COPY --from=frontend-builder /app/dist /app/dist
+COPY --from=builder /app/dist /app/dist
 
 EXPOSE 10000
 
-# Запуск FastAPI приложения, раздающего и API/вебхуки, и статический фронтенд
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "10000"]

@@ -587,14 +587,22 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
 # ---------------------------------------------------------------------------
 from fastapi.staticfiles import StaticFiles
 
-# Проверяем пути к папке dist (в корне /app/dist или относительно main.py)
-dist_dir = "dist"
-if not os.path.isdir(dist_dir):
-    dist_dir = os.path.join(os.path.dirname(__file__), "..", "dist")
-if not os.path.isdir(dist_dir):
-    dist_dir = os.path.join(os.path.dirname(__file__), "dist")
+# Проверяем возможные пути к папке dist
+possible_dist_paths = [
+    "/app/dist",
+    os.path.abspath("dist"),
+    os.path.join(os.path.dirname(__file__), "..", "dist"),
+    os.path.join(os.path.dirname(__file__), "dist"),
+    "dist",
+]
 
-if os.path.isdir(dist_dir):
+dist_dir = None
+for candidate in possible_dist_paths:
+    if os.path.exists(candidate) and os.path.isdir(candidate):
+        dist_dir = os.path.abspath(candidate)
+        break
+
+if dist_dir and os.path.isdir(dist_dir):
     logger.info(f"Подключение статических файлов фронтенда из: {dist_dir}")
     app.mount("/", StaticFiles(directory=dist_dir, html=True), name="static")
 else:
