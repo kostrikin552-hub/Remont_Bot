@@ -4,6 +4,7 @@ import { CompanyConfig, PricingRules, LeadPayload } from '../types';
 // Read env variables safely
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
 const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+const backendUrl = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
 // Check if valid URL and Key are provided
 export const isSupabaseConfigured = Boolean(
@@ -185,15 +186,41 @@ export async function fetchCompanyData(companyId: string): Promise<{
 }
 
 /**
- * Saves lead into Supabase `leads` table or local storage fallback
+ * Saves lead into FastAPI Backend or Supabase `leads` table or local storage fallback
  */
 export async function createLead(payload: LeadPayload): Promise<{
   success: boolean;
   leadId: string;
-  source: 'supabase' | 'local_demo';
+  source: 'backend' | 'supabase' | 'local_demo';
 }> {
   const generatedId = 'LEAD-' + Math.floor(100000 + Math.random() * 900000);
 
+  // 1. If backend URL is specified, try sending to FastAPI backend
+  if (backendUrl) {
+    try {
+      const resp = await fetch(`${backendUrl}/api/leads`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        return {
+          success: true,
+          leadId: data.lead_id ? String(data.lead_id) : generatedId,
+          source: 'backend',
+        };
+      }
+      console.warn('Backend /api/leads returned status:', resp.status);
+    } catch (err) {
+      console.warn('Backend /api/leads unreachable, falling back to Supabase:', err);
+    }
+  }
+
+  // 2. Direct Supabase insert fallback
   if (supabase) {
     try {
       const { data, error } = await supabase
@@ -234,7 +261,7 @@ export async function createLead(payload: LeadPayload): Promise<{
     }
   }
 
-  // Fallback: save lead in localStorage for preview inspection
+  // 3. Fallback: save lead in localStorage for preview inspection
   try {
     const existingRaw = localStorage.getItem('applet_leads') || '[]';
     const existing = JSON.parse(existingRaw);

@@ -2,7 +2,7 @@
 -- SQL Скрипт инициализации таблиц для калькулятора ремонта квартир (Supabase)
 -- ==============================================================================
 
--- 1. Таблица компаний (Мультитенантность)
+-- 1. Таблица компаний (Мультитенантность + Подключение Telegram ботов)
 CREATE TABLE IF NOT EXISTS public.companies (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
@@ -13,8 +13,16 @@ CREATE TABLE IF NOT EXISTS public.companies (
     secondary_coeff NUMERIC(4, 2) NOT NULL DEFAULT 1.15,
     logo_letter TEXT NOT NULL DEFAULT 'Р',
     badge_text TEXT DEFAULT 'PRO',
+    admin_chat_id BIGINT,
+    bot_token TEXT,
+    bot_username TEXT,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Добавляем столбцы, если таблица уже существовала
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS admin_chat_id BIGINT;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS bot_token TEXT;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS bot_username TEXT;
 
 -- 2. Таблица тарифов и расценок ремонта для каждой компании
 CREATE TABLE IF NOT EXISTS public.pricing_rules (
@@ -56,14 +64,15 @@ ALTER TABLE public.pricing_rules ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.leads ENABLE ROW LEVEL SECURITY;
 
 -- Политики доступа для анонимных пользователей (Telegram Mini App)
--- Разрешаем чтение компаний и расценок всем
+DROP POLICY IF EXISTS "Public companies are viewable by everyone" ON public.companies;
 CREATE POLICY "Public companies are viewable by everyone" 
 ON public.companies FOR SELECT USING (true);
 
+DROP POLICY IF EXISTS "Public pricing rules are viewable by everyone" ON public.pricing_rules;
 CREATE POLICY "Public pricing rules are viewable by everyone" 
 ON public.pricing_rules FOR SELECT USING (true);
 
--- Разрешаем отправку новых заявок (INSERT) всем
+DROP POLICY IF EXISTS "Anyone can create leads" ON public.leads;
 CREATE POLICY "Anyone can create leads" 
 ON public.leads FOR INSERT WITH CHECK (true);
 

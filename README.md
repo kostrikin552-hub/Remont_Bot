@@ -1,52 +1,31 @@
-# Remont_Bot — Telegram Mini App & Bot для расчета стоимости ремонта квартир
+# Remont_Bot — Платформа для строительных компаний: Мастер-бот + Mini App + FastAPI
 
-Современный программный комплекс для строительных и ремонтно-отделочных компаний:
-- **Telegram Mini App**: Интерактивный калькулятор ремонта в нативном стиле iOS / Telegram (React 19, TypeScript, Vite, Tailwind CSS, Supabase, Haptic Feedback).
-- **Telegram Bot**: Асинхронный бот на Python 3.11+ (aiogram 3.x) с поддержкой Deep Linking, обработкой WebApp данных и мгновенными уведомлениями о лидах.
+Программный комплекс для строительных и ремонтно-отделочных компаний и прорабов:
+- **FastAPI Бэкенд (`backend/`)**: Обслуживание Мастер-бота платформы, автоматическое подключение ботов строительных бригад, вебхуки и прием лидов.
+- **Telegram Mini App (`src/`)**: Интерактивный калькулятор ремонта в нативном стиле iOS / Telegram (React 19, TypeScript, Vite, Tailwind CSS, Supabase, Haptic Feedback).
+- **Мастер-бот платформы**: FSM-регистрация прораба за 2 минуты (название, город, токен @BotFather) с автонастройкой кнопки `setChatMenuButton` и вебхука.
 - **Мультитенантность**: Динамическая подгрузка бренда, контактов, городов и прайс-листов для разных компаний из Supabase по `company_id`.
 - **Соответствие 152-ФЗ РФ**: Обязательный чекбокс согласия и встроенная Политика конфиденциальности.
-
----
-
-## 📱 Возможности Mini App (Калькулятор)
-
-1. **Шапка компании**:
-   - Динамическое название бренда, статус («Работаем без предоплаты»), телефон и бейдж города.
-   - Поддержка светлой и тёмной темы с автоопределением из Telegram.
-   - Быстрый переключатель тенантов/компаний.
-2. **Тип недвижимости**:
-   - Переключатель «Новостройка» (коэфф 1.0) и «Вторичка» (динамический коэфф, по умолчанию 1.15).
-3. **Площадь объекта**:
-   - Интерактивный ползунок от 20 до 180 м² с крупным числом по центру.
-   - Пресеты типовых планировок (Студия, 1-к, 2-к, 3-к, 4-к+) и точная подстройка (− / + 1 м²).
-4. **Классы отделки**:
-   - «Косметический» (базовая ставка 4 500 ₽/м²).
-   - «Капитальный» (базовая ставка 8 500 ₽/м²).
-   - «Дизайнерский» (базовая ставка 15 000 ₽/м²).
-5. **Дополнительные опции**:
-   - Дизайн-проект (+2 000 ₽/м²).
-   - Демонтаж старых покрытий (+1 200 ₽/м²).
-   - Комплектация черновыми материалами (+3 500 ₽/м²).
-6. **Расчет и запись на замер**:
-   - Формула: `(Площадь × Базовая ставка × Коэффициент) + Доп. услуги`.
-   - Вилка ориентировочной стоимости: от X (−5%) до Y (+10%).
-   - Модальное окно детализации сметы с копированием текста в буфер обмена.
-   - Запись на бесплатный замер с выбором даты, канала связи (Telegram, WhatsApp, звонок) и подарком (3D-план расстановки мебели).
-   - Сохранение лида в Supabase (`leads`) и отправка через `Telegram.WebApp.sendData`.
 
 ---
 
 ## 📁 Структура репозитория
 
 ```
-├── bot/                       # Исходный код Telegram бота (Python 3.11+, aiogram 3)
-│   ├── main.py                # Точка входа бота, обработка /start, WebAppData и команд
+├── backend/                   # FastAPI бэкенд + aiogram 3 (Мастер-бот и Webhook движок)
+│   ├── config.py              # Загрузка и валидация переменных окружения
+│   ├── main.py                # FastAPI приложение, FSM мастер-бота, эндпоинты /webhook и /api/leads
+│   ├── Dockerfile             # Docker-образ Python 3.11-slim для Render / Cloud Run
+│   ├── requirements.txt       # Зависимости Python (FastAPI, aiogram, Supabase, httpx)
+│   └── .env.example           # Шаблон конфигурации бэкенда
+├── bot/                       # Автономный клиентский Telegram бот (aiogram 3)
+│   ├── main.py                # Обработка /start, WebAppData и команд
 │   ├── requirements.txt       # Зависимости Python
-│   └── .env.example           # Пример конфигурации бота
-├── src/                       # Исходный код Telegram Mini App (React + TypeScript)
+│   └── .env.example           # Пример конфигурации
+├── src/                       # Исходный код Telegram Mini App (React 19 + TypeScript)
 │   ├── components/            # UI компоненты (Header, Slider, Cards, Modals и др.)
 │   ├── lib/
-│   │   └── supabase.ts        # Клиент Supabase, fallback-логика и мультитенантность
+│   │   └── supabase.ts        # Клиент Supabase, fallback-логика, отправка лидов на бэкенд
 │   ├── utils/
 │   │   └── telegram.ts        # Telegram WebApp SDK хелперы, Haptic Feedback
 │   ├── types.ts               # TypeScript типы
@@ -60,70 +39,52 @@
 
 ---
 
-## 🚀 Быстрый запуск
+## ⚙️ Архитектура бэкенда (`backend/`)
 
-### 1. Запуск Mini App (React + Vite)
+### 1. Мастер-бот платформы (FSM для прорабов)
+- При команде `/start` запускается сценарий создания бота:
+  1. Запрос названия компании/бригады.
+  2. Запрос города работы.
+  3. Запрос API-токена бота от `@BotFather`.
+- При получении токена:
+  1. Проверяет токен через `getMe`.
+  2. Сохраняет компанию в Supabase (`admin_chat_id = message.from_user.id`).
+  3. Автоматически настраивает кнопку меню нового бота через `setChatMenuButton`:
+     `web_app: {"url": f"{MINI_APP_URL}?company_id={company_id}"}`.
+  4. Устанавливает вебхук для клиентского бота на `{BASE_WEBHOOK_URL}/webhook/{company_id}`.
+  5. Отправляет прорабу поздравление со ссылкой на его готового бота.
 
-```bash
-# Установка зависимостей
-npm install
+### 2. Вебхук клиентских ботов: `POST /webhook/{company_id}`
+- При команде `/start` клиенту высылается приветствие и кнопка «Рассчитать стоимость ремонта» с персональным `company_id`.
 
-# Запуск локального сервера разработки (порт 3000)
-npm run dev
+### 3. Прием лидов из Mini App: `POST /api/leads`
+- Сохраняет расчет в Supabase (`leads`).
+- Находит `admin_chat_id` прораба и отправляет моментальное сообщение в Telegram с контактами, площадью, сметой и кнопками:
+  `[📞 Позвонить]` и `[💬 Открыть чат в TG]`.
 
-# Сборка продакшен бандла
-npm run build
-```
+---
 
-Для подключения к базе данных Supabase укажите в файле `.env` (на основе `.env.example`):
-```env
-VITE_SUPABASE_URL="https://your-project.supabase.co"
-VITE_SUPABASE_ANON_KEY="your-anon-key"
-```
-*(Если переменные не заданы, приложение автоматически работает в демо-режиме с локальным сохранением лидов и переключением демонстрационных компаний).*
+## 🚀 Деплой бэкенда на Render (Docker)
 
-### 2. Запуск Telegram Бота (Python)
-
-```bash
-cd bot
-python -m venv venv
-source venv/bin/activate  # На Windows: venv\Scripts\activate
-pip install -r requirements.txt
-
-# Создайте файл .env на основе .env.example
-cp .env.example .env
-```
-
-Заполните переменные в `bot/.env`:
-- `BOT_TOKEN`: токен от [@BotFather](https://t.me/BotFather).
-- `WEBAPP_URL`: URL вашего развернутого Mini App (например, на Vercel, Cloudflare Pages или Cloud Run).
-- `ADMIN_CHAT_ID`: ваш Telegram ID для получения уведомлений о новых заявках.
-
-Запуск бота:
-```bash
-python main.py
-```
+1. Создайте **Web Service** на [Render.com](https://render.com).
+2. Подключите репозиторий `kostrikin552-hub/Remont_Bot`.
+3. В настройках:
+   - **Environment**: Docker
+   - **Docker Context**: `.`
+   - **Dockerfile Path**: `backend/Dockerfile`
+4. Добавьте переменные окружения:
+   - `SUPABASE_URL`: URL проекта Supabase
+   - `SUPABASE_SERVICE_ROLE_KEY`: Service role ключ из Supabase (Settings -> API)
+   - `MASTER_BOT_TOKEN`: токен главного бота платформы от @BotFather
+   - `BASE_WEBHOOK_URL`: `https://ваш-сервис.onrender.com`
+   - `MINI_APP_URL`: URL опубликованного фронтенда Mini App
+   - `PORT`: `10000`
 
 ---
 
 ## 🗄 Настройка Supabase
 
-Выполните содержимое файла `supabase_schema.sql` в **SQL Editor** вашего проекта Supabase:
-- Создаются таблицы: `companies`, `pricing_rules`, `leads`.
-- Включается **Row Level Security (RLS)** с открытым доступом на чтение компаний и создание лидов.
-- Добавляются 3 демонстрационные компании: `remont-pro`, `elite-stroi`, `master-remonta`.
-
----
-
-## 🔗 Мультитенантность (Deep Linking в Telegram)
-
-Вы можете отправлять клиентам ссылки на бота с автоматическим открытием нужной компании и ее цен:
-- `https://t.me/your_bot?start=remont-pro` — откроет «РемонтПро» (Москва).
-- `https://t.me/your_bot?start=elite-stroi` — откроет «ЭлитСтрой Премиум» (Санкт-Петербург).
-- `https://t.me/your_bot?start=master-remonta` — откроет «МастерРемонт» (Казань).
-
----
-
-## 📄 Лицензия
-
-Apache-2.0
+Выполните скрипт `supabase_schema.sql` в **SQL Editor** Supabase. Он создает таблицы:
+- `companies`: ID компании, название, город, телефон, `admin_chat_id`, `bot_token`, `bot_username`.
+- `pricing_rules`: индивидуальные расценки за м² для каждого тарифа и доп. опций.
+- `leads`: данные клиентов, смета, контакты и согласие с 152-ФЗ.
