@@ -29,13 +29,22 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 from supabase import Client, create_client
 
-from backend.config import (
-    BASE_WEBHOOK_URL,
-    MASTER_BOT_TOKEN,
-    MINI_APP_URL,
-    SUPABASE_SERVICE_ROLE_KEY,
-    SUPABASE_URL,
-)
+try:
+    from backend.config import (
+        BASE_WEBHOOK_URL,
+        MASTER_BOT_TOKEN,
+        MINI_APP_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+        SUPABASE_URL,
+    )
+except ImportError:
+    from config import (
+        BASE_WEBHOOK_URL,
+        MASTER_BOT_TOKEN,
+        MINI_APP_URL,
+        SUPABASE_SERVICE_ROLE_KEY,
+        SUPABASE_URL,
+    )
 
 # ---------------------------------------------------------------------------
 # Логирование
