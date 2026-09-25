@@ -4,15 +4,6 @@ from dotenv import load_dotenv
 # Загружаем переменные из .env файла
 load_dotenv()
 
-# Supabase
-SUPABASE_URL: str = os.getenv("SUPABASE_URL", "").strip()
-SUPABASE_SERVICE_ROLE_KEY: str = (
-    os.getenv("SUPABASE_SERVICE_ROLE_KEY", "") or os.getenv("SUPABASE_ANON_KEY", "")
-).strip()
-
-# Telegram Master Bot
-MASTER_BOT_TOKEN: str = os.getenv("MASTER_BOT_TOKEN", "").strip()
-
 
 def normalize_url(url: str, default: str) -> str:
     val = (url or default).strip().rstrip("/")
@@ -21,14 +12,38 @@ def normalize_url(url: str, default: str) -> str:
     return val
 
 
-# URLs (с авто-добавлением https:// при получении host от Render)
+# Supabase
+SUPABASE_URL: str = os.getenv(
+    "SUPABASE_URL", "https://zwitgykmplbtirmslzem.supabase.com"
+).strip()
+
+SUPABASE_SERVICE_ROLE_KEY: str = (
+    os.getenv(
+        "SUPABASE_SERVICE_ROLE_KEY",
+        "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Inp3aXRneWttcGxidGlybXNsemVtIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc5MDMxODM3NiwiZXhwIjoyMTA1ODk0Mzc2fQ.K4YooPUUwdUDl7jSabZHdAV8DmlRhYlNJ4dVd_HOHWs",
+    )
+    or os.getenv("SUPABASE_ANON_KEY", "sb_publishable_Lgt9Xc9gq2pgJ71JRfsL2g_d43evJqj")
+).strip()
+
+# Telegram Master Bot
+MASTER_BOT_TOKEN: str = os.getenv(
+    "MASTER_BOT_TOKEN", "8669689967:AAFRdKTEAWRvA1yMERFB0hiPpZzs39E1Po4"
+).strip()
+
+# Платёжные шлюзы (YooKassa / Telegram Payments)
+TELEGRAM_PAYMENT_PROVIDER_TOKEN: str = os.getenv(
+    "TELEGRAM_PAYMENT_PROVIDER_TOKEN", "390540012:LIVE:102909"
+).strip()
+
+YOOKASSA_SHOP_ID: str = os.getenv("YOOKASSA_SHOP_ID", "1413258").strip()
+
+# URLs монолита на Render.com
 BASE_WEBHOOK_URL: str = normalize_url(
-    os.getenv("BASE_WEBHOOK_URL", ""), "https://remont-backend.onrender.com"
+    os.getenv("BASE_WEBHOOK_URL", ""), "https://remont-backend-exr3.onrender.com"
 )
 
 MINI_APP_URL: str = normalize_url(
-    os.getenv("MINI_APP_URL", ""),
-    "https://ais-pre-3xeyotanildylb6nzg47ki-97067624345.europe-west1.run.app",
+    os.getenv("MINI_APP_URL", ""), "https://remont-backend-exr3.onrender.com"
 )
 
 PORT: int = int(os.getenv("PORT", "10000"))

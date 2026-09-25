@@ -1,9 +1,11 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { CompanyConfig, PricingRules, LeadPayload } from '../types';
 
-// Read env variables safely
-const supabaseUrl = import.meta.env.VITE_SUPABASE_URL;
-const supabaseAnonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+// Read env variables safely with live production credentials as fallback
+const supabaseUrl =
+  import.meta.env.VITE_SUPABASE_URL || 'https://zwitgykmplbtirmslzem.supabase.com';
+const supabaseAnonKey =
+  import.meta.env.VITE_SUPABASE_ANON_KEY || 'sb_publishable_Lgt9Xc9gq2pgJ71JRfsL2g_d43evJqj';
 const backendUrl = (import.meta.env.VITE_BACKEND_URL || '').replace(/\/$/, '');
 
 // Check if valid URL and Key are provided
@@ -195,29 +197,28 @@ export async function createLead(payload: LeadPayload): Promise<{
 }> {
   const generatedId = 'LEAD-' + Math.floor(100000 + Math.random() * 900000);
 
-  // 1. If backend URL is specified, try sending to FastAPI backend
-  if (backendUrl) {
-    try {
-      const resp = await fetch(`${backendUrl}/api/leads`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
+  // 1. Try sending to FastAPI backend (relative /api/leads or configured backendUrl)
+  const apiEndpoint = backendUrl ? `${backendUrl}/api/leads` : '/api/leads';
+  try {
+    const resp = await fetch(apiEndpoint, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
 
-      if (resp.ok) {
-        const data = await resp.json();
-        return {
-          success: true,
-          leadId: data.lead_id ? String(data.lead_id) : generatedId,
-          source: 'backend',
-        };
-      }
-      console.warn('Backend /api/leads returned status:', resp.status);
-    } catch (err) {
-      console.warn('Backend /api/leads unreachable, falling back to Supabase:', err);
+    if (resp.ok) {
+      const data = await resp.json();
+      return {
+        success: true,
+        leadId: data.lead_id ? String(data.lead_id) : generatedId,
+        source: 'backend',
+      };
     }
+    console.warn(`Backend ${apiEndpoint} returned status:`, resp.status);
+  } catch (err) {
+    console.warn(`Backend ${apiEndpoint} unreachable, falling back to Supabase:`, err);
   }
 
   // 2. Direct Supabase insert fallback
