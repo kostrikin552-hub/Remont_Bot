@@ -306,7 +306,7 @@ class LeadCreateRequest(BaseModel):
 async def lifespan(app: FastAPI):
     # Старт: настройка вебхука мастер-бота
     if master_bot and BASE_WEBHOOK_URL:
-        master_webhook_url = f"{BASE_WEBHOOK_URL}/master-webhook"
+        master_webhook_url = f"{BASE_WEBHOOK_URL}/webhook/master"
         try:
             await master_bot.set_webhook(master_webhook_url, drop_pending_updates=True)
             logger.info(f"Вебхук Мастер-бота установлен на {master_webhook_url}")
@@ -343,20 +343,16 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 # Health-check
 # ---------------------------------------------------------------------------
-@app.get("/")
 @app.get("/health")
+@app.get("/")
 async def health_check():
-    return {
-        "status": "ok",
-        "service": "Remont Platform Backend",
-        "supabase_connected": supabase_client is not None,
-        "master_bot_active": master_bot is not None,
-    }
+    return {"status": "ok"}
 
 
 # ---------------------------------------------------------------------------
-# Вебхук Мастер-бота платформы: POST /master-webhook
+# Вебхук Мастер-бота платформы: POST /webhook/master
 # ---------------------------------------------------------------------------
+@app.post("/webhook/master")
 @app.post("/master-webhook")
 async def master_webhook_endpoint(request: Request):
     if not master_bot:

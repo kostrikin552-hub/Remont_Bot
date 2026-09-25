@@ -1,0 +1,47 @@
+services:
+  # ==============================================================================
+  # 1. Фронтенд: Telegram Mini App (React + Vite + Tailwind CSS)
+  # ==============================================================================
+  - type: web
+    name: remont-mini-app
+    env: static
+    buildCommand: npm install && npm run build
+    staticPublishPath: ./dist
+    envVars:
+      - key: VITE_SUPABASE_URL
+        sync: false
+      - key: VITE_SUPABASE_ANON_KEY
+        sync: false
+      - key: VITE_BACKEND_URL
+        fromService:
+          type: web
+          name: remont-backend
+          property: host
+
+  # ==============================================================================
+  # 2. Бэкенд: FastAPI + aiogram 3 (Мастер-бот платформы и вебхуки)
+  # ==============================================================================
+  - type: web
+    name: remont-backend
+    env: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: ./backend
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MASTER_BOT_TOKEN
+        sync: false
+      - key: BASE_WEBHOOK_URL
+        fromService:
+          type: web
+          name: remont-backend
+          property: host
+      - key: MINI_APP_URL
+        fromService:
+          type: web
+          name: remont-mini-app
+          property: host

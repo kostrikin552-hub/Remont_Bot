@@ -4,6 +4,7 @@ FROM python:3.11-slim
 # Настройки окружения Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
+    PYTHONPATH=/app \
     PORT=10000
 
 WORKDIR /app
