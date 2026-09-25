@@ -1,0 +1,7 @@
+{
+  "name": "РемонтПро — Калькулятор ремонта",
+  "description": "Telegram Mini App для мгновенного онлайн-расчета стоимости ремонта квартиры с выездом замерщика.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
