@@ -465,6 +465,11 @@ async def health_check():
     return {"status": "ok"}
 
 
+@app.get("/favicon.ico")
+async def favicon_endpoint():
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
 # ---------------------------------------------------------------------------
 # Вебхук Мастер-бота платформы: POST /webhook/master
 # ---------------------------------------------------------------------------
