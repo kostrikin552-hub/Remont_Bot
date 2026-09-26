@@ -3,6 +3,7 @@
 и автоматического подключения ботов строительных компаний.
 """
 
+import html
 import logging
 import os
 import re
@@ -662,45 +663,72 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     min_cost = f"{lead.price_min:,.0f}".replace(",", " ")
     max_cost = f"{lead.price_max:,.0f}".replace(",", " ")
 
+    # Экранируем пользовательские данные от поломки HTML-разметки
+    safe_name = html.escape(str(lead.name or "Не указано"))
+    safe_phone = html.escape(str(lead.phone or ""))
+    safe_date = html.escape(str(lead.preferred_date or "Не указана"))
+    safe_comm = html.escape(str(channel_name))
+
+    digits_only = re.sub(r"[^0-9]", "", clean_phone)
+
     notification_text = (
         "🚨 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР!</b>\n"
         "━━━━━━━━━━━━━━━━━━\n"
-        f"👤 <b>Клиент:</b> {lead.name}\n"
-        f"📱 <b>Телефон:</b> {lead.phone}\n"
-        f"💬 <b>Предпочтительная связь:</b> {channel_name}\n"
-        f"📅 <b>Желаемая дата замера:</b> {lead.preferred_date}\n\n"
+        f"👤 <b>Клиент:</b> {safe_name}\n"
+        f"📱 <b>Телефон:</b> <code>{safe_phone}</code>\n"
+        f"💬 <b>Связь:</b> {safe_comm}\n"
+        f"📅 <b>Желаемая дата замера:</b> {safe_date}\n\n"
         f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м², {lead.renovation_class}\n"
         f"💰 <b>Оценка:</b> от {min_cost} до {max_cost} ₽\n"
         "━━━━━━━━━━━━━━━━━━"
     )
 
-    # Inline кнопки для быстрой связи
-    call_url = f"tel:{clean_phone}"
-    digits_only = re.sub(r"[^0-9]", "", clean_phone)
-    tg_chat_url = f"https://t.me/+{digits_only}"
-
-    inline_keyboard = [
-        [
-            {"text": "📞 Позвонить", "url": call_url},
-            {"text": "💬 Открыть чат в TG", "url": tg_chat_url},
-        ]
-    ]
+    # Telegram Bot API строго требует в url кнопок валидные протоколы http:// или https://
+    # tel: и ссылки вида t.me/+number возвращают 400 Bad Request
+    inline_keyboard = []
+    actions_row = []
+    if digits_only:
+        actions_row.append({"text": "💬 Открыть WhatsApp", "url": f"https://wa.me/{digits_only}"})
+    if actions_row:
+        inline_keyboard.append(actions_row)
 
     # Если есть admin_chat_id и рабочий токен бота, отправляем мгновенное push-сообщение
     if admin_chat_id and bot_token:
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                send_payload = {
+                send_payload: Dict[str, Any] = {
                     "chat_id": admin_chat_id,
                     "text": notification_text,
                     "parse_mode": "HTML",
-                    "reply_markup": {"inline_keyboard": inline_keyboard},
                 }
+                if inline_keyboard:
+                    send_payload["reply_markup"] = {"inline_keyboard": inline_keyboard}
+
                 res = await client.post(
                     f"https://api.telegram.org/bot{bot_token}/sendMessage",
                     json=send_payload,
                 )
-                logger.info(f"Уведомление прорабу отправлено: {res.status_code}")
+                if res.status_code == 200:
+                    logger.info(f"Уведомление прорабу (chat_id={admin_chat_id}) успешно доставлено: 200 OK")
+                else:
+                    logger.warning(
+                        f"Ошибка отправки с кнопками ({res.status_code}: {res.text}), отправляем fallback без кнопок..."
+                    )
+                    # Гарантированный fallback: отправка чистого текста без разметки и кнопок
+                    plain_text = (
+                        f"🚨 НОВАЯ ЗАЯВКА НА ЗАМЕР!\n"
+                        f"Клиент: {lead.name}\n"
+                        f"Телефон: {lead.phone}\n"
+                        f"Связь: {channel_name}\n"
+                        f"Желаемая дата: {lead.preferred_date}\n"
+                        f"Объект: {housing_type}, {lead.area} м², {lead.renovation_class}\n"
+                        f"Оценка стоимости: от {min_cost} до {max_cost} руб."
+                    )
+                    fb_res = await client.post(
+                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                        json={"chat_id": admin_chat_id, "text": plain_text},
+                    )
+                    logger.info(f"Результат fallback отправки: {fb_res.status_code}")
         except Exception as e:
             logger.error(f"Не удалось отправить уведомление прорабу: {e}")
     else:
