@@ -77,8 +77,81 @@ COMPANIES_CACHE: Dict[str, Dict[str, Any]] = {
         "phone": "+7 (800) 555-35-35",
         "admin_chat_id": None,
         "bot_token": None,
+        "secondary_coeff": 1.15,
+        "status_text": "Работаем без предоплаты",
+        "badge_text": "PRO",
+        "logo_letter": "Р",
     }
 }
+
+
+def is_valid_uuid(val: Any) -> bool:
+    if not val:
+        return False
+    return bool(re.match(r"^[0-9a-fA-F-]{36}$", str(val).strip()))
+
+
+def find_company(identifier: str) -> Optional[Dict[str, Any]]:
+    """
+    Универсальный поиск компании:
+    1. Поиск в кэше по slug / username / uuid
+    2. Поиск в Supabase (по id если UUID, либо по bot_username)
+    3. Fallback на демо РемонтПро
+    """
+    if not identifier:
+        return None
+    raw_key = identifier.strip()
+    lower_key = raw_key.lower()
+
+    # 1. Проверяем кэш
+    for k in (lower_key, raw_key):
+        if k in COMPANIES_CACHE:
+            return COMPANIES_CACHE[k]
+
+    # 2. Ищем в Supabase
+    if supabase_client:
+        try:
+            if is_valid_uuid(raw_key):
+                res = (
+                    supabase_client.table("companies")
+                    .select("*")
+                    .eq("id", raw_key)
+                    .maybe_single()
+                    .execute()
+                )
+            else:
+                res = (
+                    supabase_client.table("companies")
+                    .select("*")
+                    .eq("bot_username", lower_key)
+                    .maybe_single()
+                    .execute()
+                )
+            if res and res.data:
+                comp = res.data
+                c_uuid = str(comp.get("id"))
+                c_uname = (comp.get("bot_username") or "").lower()
+
+                # Нормализуем объект компании
+                comp["uuid"] = c_uuid
+                comp["secondary_coeff"] = comp.get("secondary_coeff", 1.15)
+                comp["status_text"] = comp.get("status_text", "Работаем без предоплаты")
+                comp["badge_text"] = comp.get("badge_text", "PRO")
+                comp["logo_letter"] = comp.get("logo_letter", (comp.get("name") or "Р")[0].upper())
+
+                COMPANIES_CACHE[c_uuid] = comp
+                if c_uname:
+                    COMPANIES_CACHE[c_uname] = comp
+                COMPANIES_CACHE[lower_key] = comp
+                return comp
+        except Exception as e:
+            logger.error(f"Ошибка поиска компании '{identifier}' в Supabase: {e}")
+
+    # 3. Fallback если запрашивался remont-pro
+    if lower_key == "remont-pro":
+        return COMPANIES_CACHE.get("remont-pro")
+
+    return None
 
 # ---------------------------------------------------------------------------
 # FSM Состояния регистрации компании прорабом
@@ -193,54 +266,88 @@ async def master_process_token(message: Message, state: FSMContext):
     city = data.get("city", "Москва")
     admin_chat_id = message.from_user.id
 
-    # Генерируем удобный company_id на основе username бота
+    # Генерируем удобный slug на основе username бота
     clean_slug = re.sub(r"[^a-zA-Z0-9_-]", "", bot_username.lower())
     company_id = clean_slug if clean_slug else f"comp_{bot_info.get('id')}"
 
-    # 2. Сохраняем компанию в Supabase (с обновлением при совпадении ID)
+    # 2. Сохраняем компанию и расценки в Supabase (по схеме UUID)
+    company_uuid = None
     if supabase_client:
         try:
-            supabase_client.table("companies").upsert(
-                {
-                    "id": company_id,
-                    "name": company_name,
-                    "city": city,
-                    "admin_chat_id": admin_chat_id,
-                    "bot_token": token_candidate,
-                    "bot_username": bot_username,
-                    "status_text": "Работаем без предоплаты",
-                    "secondary_coeff": 1.15,
-                    "logo_letter": company_name[0].upper() if company_name else "Р",
-                    "badge_text": "PRO",
-                }
-            ).execute()
+            # Проверяем, есть ли уже компания с таким bot_username
+            existing = (
+                supabase_client.table("companies")
+                .select("id")
+                .eq("bot_username", bot_username.lower())
+                .maybe_single()
+                .execute()
+            )
+            company_row = {
+                "name": company_name,
+                "city": city,
+                "phone": "+7 (800) 555-35-35",
+                "admin_chat_id": admin_chat_id,
+                "bot_token": token_candidate,
+                "bot_username": bot_username.lower(),
+                "is_active": True,
+            }
+            if existing and existing.data:
+                company_uuid = str(existing.data.get("id"))
+                supabase_client.table("companies").update(company_row).eq("id", company_uuid).execute()
+                logger.info(f"Компания {bot_username} (UUID {company_uuid}) обновлена в Supabase.")
+            else:
+                ins_res = supabase_client.table("companies").insert(company_row).execute()
+                if ins_res.data and len(ins_res.data) > 0:
+                    company_uuid = str(ins_res.data[0].get("id"))
+                logger.info(f"Компания {bot_username} (UUID {company_uuid}) создана в Supabase.")
 
-            # Добавляем стандартные расценки ремонта, если их еще нет
-            supabase_client.table("pricing_rules").upsert(
-                {
-                    "company_id": company_id,
-                    "cosmetic_price": 4500,
-                    "capital_price": 8500,
-                    "designer_price": 15000,
-                    "design_project_price": 2000,
-                    "demolition_price": 1200,
-                    "materials_price": 3500,
-                },
-                on_conflict="company_id",
-            ).execute()
-            logger.info(f"Компания {company_id} сохранена в Supabase.")
+            # Сохраняем расценки в pricing_rules с внешним ключом company_uuid
+            if company_uuid:
+                p_existing = (
+                    supabase_client.table("pricing_rules")
+                    .select("id")
+                    .eq("company_id", company_uuid)
+                    .maybe_single()
+                    .execute()
+                )
+                pricing_row = {
+                    "company_id": company_uuid,
+                    "price_cosmetic": 4500,
+                    "price_capital": 8500,
+                    "price_designer": 15000,
+                    "coef_secondary": 1.15,
+                    "price_design_m2": 2000,
+                    "price_demolition_m2": 1200,
+                    "price_materials_m2": 3500,
+                }
+                if p_existing and p_existing.data:
+                    supabase_client.table("pricing_rules").update(pricing_row).eq("company_id", company_uuid).execute()
+                else:
+                    supabase_client.table("pricing_rules").insert(pricing_row).execute()
+                logger.info(f"Расценки для компании {bot_username} сохранены в Supabase.")
         except Exception as e:
             logger.error(f"Ошибка сохранения компании в Supabase: {e}")
 
     # Сохраняем в локальный кэш
-    COMPANIES_CACHE[company_id] = {
-        "id": company_id,
+    company_obj = {
+        "id": company_uuid or company_id,
+        "uuid": company_uuid,
+        "slug": company_id,
         "name": company_name,
         "city": city,
+        "phone": "+7 (800) 555-35-35",
         "admin_chat_id": admin_chat_id,
         "bot_token": token_candidate,
-        "bot_username": bot_username,
+        "bot_username": bot_username.lower(),
+        "secondary_coeff": 1.15,
+        "status_text": "Работаем без предоплаты",
+        "badge_text": "PRO",
+        "logo_letter": company_name[0].upper() if company_name else "Р",
     }
+    COMPANIES_CACHE[company_id] = company_obj
+    COMPANIES_CACHE[bot_username.lower()] = company_obj
+    if company_uuid:
+        COMPANIES_CACHE[company_uuid] = company_obj
 
     # 3. Настройка кнопки меню чата (setChatMenuButton)
     app_url = f"{MINI_APP_URL}?company_id={company_id}"
@@ -391,23 +498,8 @@ async def client_bot_webhook(company_id: str, request: Request):
     except Exception:
         return Response(status_code=status.HTTP_200_OK)
 
-    # 1. Ищем данные компании
-    company_data = COMPANIES_CACHE.get(company_id)
-    if not company_data and supabase_client:
-        try:
-            res = (
-                supabase_client.table("companies")
-                .select("*")
-                .eq("id", company_id)
-                .maybe_single()
-                .execute()
-            )
-            if res.data:
-                company_data = res.data
-                COMPANIES_CACHE[company_id] = company_data
-        except Exception as e:
-            logger.warning(f"Ошибка запроса компании {company_id} из Supabase: {e}")
-
+    # 1. Ищем данные компании через find_company
+    company_data = find_company(company_id)
     bot_token = company_data.get("bot_token") if company_data else None
     if not bot_token:
         logger.warning(f"Бот-токен для компании {company_id} не найден.")
@@ -455,7 +547,52 @@ async def client_bot_webhook(company_id: str, request: Request):
 
 
 # ---------------------------------------------------------------------------
-# В. Эндпоинт приема лидов из Mini App: POST /api/leads
+# В. Получение профиля компании и расценок: GET /api/companies/{company_id}
+# ---------------------------------------------------------------------------
+@app.get("/api/companies/{company_id}")
+async def get_company_endpoint(company_id: str):
+    """
+    Возвращает профиль строительной компании и её расценки для Mini App.
+    """
+    company = find_company(company_id)
+    pricing = None
+
+    company_uuid = company.get("uuid") or company.get("id") if company else None
+    if company_uuid and is_valid_uuid(str(company_uuid)) and supabase_client:
+        try:
+            p_res = (
+                supabase_client.table("pricing_rules")
+                .select("*")
+                .eq("company_id", str(company_uuid))
+                .maybe_single()
+                .execute()
+            )
+            if p_res and p_res.data:
+                pricing = p_res.data
+        except Exception as e:
+            logger.error(f"Ошибка получения расценок для {company_id}: {e}")
+
+    if not company:
+        company = {
+            "id": company_id,
+            "name": "РемонтПро",
+            "city": "Москва и МО",
+            "phone": "+7 (800) 555-35-35",
+            "status_text": "Работаем без предоплаты",
+            "secondary_coeff": 1.15,
+            "badge_text": "PRO",
+            "logo_letter": "Р",
+        }
+
+    return {
+        "success": True,
+        "company": company,
+        "pricing": pricing,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Г. Эндпоинт приема лидов из Mini App: POST /api/leads
 # ---------------------------------------------------------------------------
 @app.post("/api/leads")
 async def create_lead_endpoint(lead: LeadCreateRequest):
@@ -465,25 +602,33 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     """
     lead_id = f"LEAD-{abs(hash(lead.phone + str(lead.area))) % 900000 + 100000}"
 
-    # 1. Сохранение в Supabase
+    # 1. Поиск компании через find_company
+    company = find_company(lead.company_id)
+    company_uuid = None
+    if company:
+        cid = str(company.get("id", ""))
+        cuuid = str(company.get("uuid", ""))
+        if is_valid_uuid(cid):
+            company_uuid = cid
+        elif is_valid_uuid(cuuid):
+            company_uuid = cuuid
+
+    # 2. Сохранение в Supabase (в точном соответствии с колонками таблицы leads)
     if supabase_client:
         try:
             insert_data = {
-                "company_id": lead.company_id,
-                "name": lead.name,
-                "phone": lead.phone,
-                "city": lead.city,
-                "area": lead.area,
-                "property_type": lead.property_type,
-                "renovation_class": lead.renovation_class,
-                "price_min": lead.price_min,
-                "price_max": lead.price_max,
-                "total_base_cost": lead.total_base_cost or (lead.price_min + lead.price_max) / 2,
-                "active_options": lead.active_options or [],
+                "company_id": company_uuid,
+                "client_name": lead.name,
+                "client_phone": lead.phone,
+                "contact_channel": lead.communication or "telegram",
                 "preferred_date": lead.preferred_date,
-                "communication": lead.communication,
-                "comment": lead.comment,
-                "agreement_152fz": lead.agreement_152fz,
+                "housing_type": "Новостройка" if lead.property_type == "new" else "Вторичка",
+                "repair_type": lead.renovation_class,
+                "area_m2": float(lead.area),
+                "options": lead.active_options or [],
+                "min_cost": float(lead.price_min),
+                "max_cost": float(lead.price_max),
+                "status": "new",
             }
             db_res = supabase_client.table("leads").insert(insert_data).execute()
             if db_res.data and len(db_res.data) > 0:
@@ -491,23 +636,6 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             logger.info(f"Лид {lead_id} успешно записан в Supabase.")
         except Exception as e:
             logger.error(f"Ошибка записи лида в Supabase: {e}")
-
-    # 2. Поиск компании и её admin_chat_id
-    company = COMPANIES_CACHE.get(lead.company_id)
-    if (not company or not company.get("admin_chat_id")) and supabase_client:
-        try:
-            c_res = (
-                supabase_client.table("companies")
-                .select("*")
-                .eq("id", lead.company_id)
-                .maybe_single()
-                .execute()
-            )
-            if c_res.data:
-                company = c_res.data
-                COMPANIES_CACHE[lead.company_id] = company
-        except Exception as e:
-            logger.error(f"Ошибка получения компании {lead.company_id}: {e}")
 
     admin_chat_id = company.get("admin_chat_id") if company else None
     bot_token = (company.get("bot_token") if company else None) or MASTER_BOT_TOKEN
