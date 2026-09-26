@@ -24,13 +24,7 @@ import {
   DEMO_COMPANIES,
   DEFAULT_COMPANY_ID,
 } from './lib/supabase';
-import {
-  FileText,
-  BadgePercent,
-  HelpCircle,
-  PhoneCall,
-  ChevronDown,
-} from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 
 const FAQ_ITEMS = [
   {
@@ -286,105 +280,77 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-100 transition-colors pb-32">
+    <div className="min-h-screen bg-[#f8f8f7] dark:bg-[#121214] text-zinc-900 dark:text-zinc-100 transition-colors pb-32">
       <div className="max-w-md mx-auto">
-        {/* 1. Header: Название компании, статус, город, телефон, смена тенанта */}
+        {/* 1. Header: Название компании, статус, город, телефон */}
         <Header
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
-          onSelectCompanyId={handleSelectCompanyId}
-          isFromSupabase={isFromSupabase}
         />
 
-        <main className="px-3.5 space-y-3.5 mt-1">
-          {/* 2. Тип недвижимости: Новостройка (1.0) / Вторичка (secondaryCoeff) */}
+        <main className="px-4 space-y-4 mt-2">
+          {/* 2. Тип недвижимости: Новостройка / Вторичка */}
           <PropertyTypeSelector
             value={propertyType}
             onChange={(type) => setPropertyType(type)}
             secondaryCoeff={company.secondaryCoeff}
           />
 
-          {/* 3. Площадь: Интерактивный ползунок от 20 до 180 м² с крупной цифрой по центру */}
+          {/* 3. Площадь: Интерактивный ползунок с крупной цифрой */}
           <AreaSlider
             value={area}
             onChange={(val) => setArea(val)}
           />
 
-          {/* 4. Класс ремонта: 3 карточки с радио-выбором */}
+          {/* 4. Класс ремонта: 3 тарифа */}
           <RenovationClassCards
             classes={dynamicClasses}
             selectedId={selectedClassId}
             onSelect={(id) => setSelectedClassId(id)}
           />
 
-          {/* 5. Дополнительные опции: Дизайн-проект, Демонтаж, Черновые материалы */}
+          {/* 5. Дополнительные опции */}
           <AdditionalOptions
             options={dynamicOptions}
             area={area}
             onToggle={handleToggleOption}
           />
 
-          {/* Value Propositions / Trust Banners */}
-          <div className="grid grid-cols-2 gap-2 pt-1">
-            <div className="p-3 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/70 dark:border-slate-800/80 shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 flex items-center justify-center mb-2">
-                <BadgePercent className="w-4 h-4" />
-              </div>
-              <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                Рассрочка 0%
-              </h5>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                До 12 месяцев без первоначального взноса
-              </p>
-            </div>
+          {/* 6. Стандарты качества (Architectural Pillars) */}
+          <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-zinc-800/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3.5">
+            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block">
+              Стандарты работы
+            </span>
 
-            <div className="p-3 rounded-2xl bg-white dark:bg-slate-900/90 border border-slate-200/70 dark:border-slate-800/80 shadow-xs">
-              <div className="w-8 h-8 rounded-xl bg-emerald-100 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mb-2">
-                <FileText className="w-4 h-4" />
-              </div>
-              <h5 className="text-xs font-bold text-slate-900 dark:text-white">
-                Фикс-цена
-              </h5>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                Стоимость не вырастет в процессе работ
-              </p>
-            </div>
-          </div>
-
-          {/* Workflow Steps */}
-          <div className="bg-white dark:bg-slate-900/90 rounded-2xl p-4 border border-slate-200/70 dark:border-slate-800/80 shadow-xs">
-            <h4 className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
-              Как мы работаем
-            </h4>
             <div className="space-y-3">
               {[
                 {
-                  step: '1',
-                  title: 'Бесплатный замер и смета',
-                  desc: 'Инженер приедет, снимет размеры и согласует детали',
+                  idx: '01',
+                  title: 'Фиксированная смета',
+                  desc: 'Сумма в договоре является окончательной и не повышается в процессе ремонта.',
                 },
                 {
-                  step: '2',
-                  title: 'Договор с гарантией 3 года',
-                  desc: 'Фиксируем сроки, штрафы за задержку и итоговую сумму',
+                  idx: '02',
+                  title: 'Оплата этапами по факту',
+                  desc: 'Вы принимаете каждый этап лично и оплачиваете только проверенные работы.',
                 },
                 {
-                  step: '3',
-                  title: 'Поэтапная оплата без предоплаты',
-                  desc: 'Оплачиваете каждый этап только после проверки качества',
+                  idx: '03',
+                  title: '36 месяцев гарантии',
+                  desc: 'Официальная гарантия на все инженерные сети и чистовые покрытия по акту.',
                 },
-              ].map((item, idx) => (
-                <div key={idx} className="flex items-start gap-3">
-                  <div className="w-6 h-6 rounded-full bg-blue-50 dark:bg-blue-900/50 text-blue-600 dark:text-blue-300 text-xs font-bold flex items-center justify-center shrink-0 mt-0.5">
-                    {item.step}
-                  </div>
+              ].map((pillar) => (
+                <div key={pillar.idx} className="flex items-start gap-3">
+                  <span className="text-xs font-mono font-bold text-zinc-400 dark:text-zinc-500 shrink-0 mt-0.5">
+                    {pillar.idx}
+                  </span>
                   <div>
-                    <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                      {item.title}
-                    </p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      {item.desc}
+                    <h5 className="text-xs font-bold text-zinc-900 dark:text-white">
+                      {pillar.title}
+                    </h5>
+                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                      {pillar.desc}
                     </p>
                   </div>
                 </div>
@@ -392,15 +358,12 @@ export default function App() {
             </div>
           </div>
 
-          {/* FAQ Accordion */}
-          <div className="bg-white dark:bg-slate-900/90 rounded-2xl p-3.5 border border-slate-200/70 dark:border-slate-800/80 shadow-xs">
-            <div className="flex items-center gap-1.5 mb-2 px-1">
-              <HelpCircle className="w-3.5 h-3.5 text-blue-500" />
-              <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wide">
-                Частые вопросы
-              </span>
-            </div>
-            <div className="divide-y divide-slate-100 dark:divide-slate-800">
+          {/* 7. Частые вопросы */}
+          <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-zinc-800/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
+            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block mb-2.5">
+              Вопросы и ответы
+            </span>
+            <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {FAQ_ITEMS.map((faq, idx) => {
                 const isOpen = expandedFaq === idx;
                 return (
@@ -411,17 +374,17 @@ export default function App() {
                         triggerHaptic('light');
                         setExpandedFaq(isOpen ? null : idx);
                       }}
-                      className="w-full flex items-center justify-between text-left text-xs font-semibold text-slate-800 dark:text-slate-200 gap-2"
+                      className="w-full flex items-center justify-between text-left text-xs font-semibold text-zinc-900 dark:text-zinc-200 gap-2"
                     >
                       <span>{faq.q}</span>
                       <ChevronDown
-                        className={`w-3.5 h-3.5 text-slate-400 shrink-0 transition-transform duration-200 ${
-                          isOpen ? 'rotate-180 text-blue-500' : ''
+                        className={`w-3.5 h-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ${
+                          isOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
                         }`}
                       />
                     </button>
                     {isOpen && (
-                      <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 leading-relaxed animate-in fade-in duration-150">
+                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed animate-in fade-in duration-150">
                         {faq.a}
                       </p>
                     )}
@@ -431,22 +394,21 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick contact badge */}
+          {/* Quick contact */}
           <div className="text-center py-2">
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 flex items-center justify-center gap-1">
-              <span>Служба поддержки и консультации:</span>
+            <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
+              Консультация дежурного инженера:{' '}
               <a
                 href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
-                className="text-blue-600 dark:text-blue-400 font-semibold hover:underline inline-flex items-center gap-0.5"
+                className="text-zinc-700 dark:text-zinc-300 font-semibold hover:underline"
               >
-                <PhoneCall className="w-3 h-3" />
                 {company.phone}
               </a>
             </p>
           </div>
         </main>
 
-        {/* 6. Sticky Bottom Calculation Bar */}
+        {/* Sticky Bottom Calculation Bar */}
         <StickyBottomBar
           result={calculation}
           onOpenBreakdown={() => setIsBreakdownOpen(true)}
@@ -465,7 +427,7 @@ export default function App() {
           />
         )}
 
-        {/* Booking Modal with 152-FZ Privacy Policy & Supabase Leads integration */}
+        {/* Booking Modal */}
         {isBookingOpen && (
           <BookingModal
             result={calculation}

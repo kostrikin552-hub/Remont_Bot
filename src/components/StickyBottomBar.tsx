@@ -1,5 +1,5 @@
 import React from 'react';
-import { CalendarCheck, ChevronRight, Info } from 'lucide-react';
+import { ArrowRight, FileSpreadsheet } from 'lucide-react';
 import { CalculationResult } from '../types';
 import { formatCurrency, triggerHaptic } from '../utils/telegram';
 
@@ -25,55 +25,59 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
   };
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-t border-slate-200/80 dark:border-slate-800/80 shadow-[0_-8px_20px_rgba(0,0,0,0.06)] dark:shadow-[0_-8px_20px_rgba(0,0,0,0.3)] safe-bottom">
-      <div className="max-w-md mx-auto px-4 pt-3 pb-2">
-        {/* Top Info Bar: Formula hint & Details Link */}
-        <div className="flex items-center justify-between text-xs mb-1.5">
-          <div className="flex items-center gap-1 text-slate-500 dark:text-slate-400 font-medium">
-            <span>Вилка стоимости ремонта:</span>
-          </div>
+    <div className="fixed bottom-0 left-0 right-0 z-40 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-xl border-t border-zinc-200/80 dark:border-zinc-800/80 shadow-[0_-8px_24px_rgba(0,0,0,0.04)] dark:shadow-[0_-8px_24px_rgba(0,0,0,0.4)] safe-bottom transition-colors">
+      <div className="max-w-md mx-auto px-4 pt-3 pb-2.5">
+        {/* Top Info line */}
+        <div className="flex items-center justify-between text-xs mb-2">
+          <span className="text-zinc-500 dark:text-zinc-400 font-medium">
+            Ориентир сметы под ключ:
+          </span>
 
           <button
             type="button"
             onClick={handleBreakdownClick}
-            className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400 font-semibold hover:underline active:opacity-70 transition"
+            className="flex items-center gap-1 text-zinc-900 dark:text-zinc-100 font-semibold hover:underline transition-colors"
           >
-            <Info className="w-3.5 h-3.5 inline" />
-            <span>Детали сметы</span>
+            <FileSpreadsheet className="w-3.5 h-3.5 text-zinc-500" />
+            <span>Детализация сметы</span>
           </button>
         </div>
 
-        {/* Price Range Display */}
-        <div className="flex items-baseline justify-between mb-2.5">
+        {/* Price row */}
+        <div className="flex items-baseline justify-between mb-3">
           <div className="flex items-baseline gap-1.5 flex-wrap">
-            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+            <span className="text-xs font-semibold text-zinc-400 dark:text-zinc-500">
               от
             </span>
-            <span className="text-xl sm:text-2xl font-black tracking-tight text-slate-900 dark:text-white tabular-nums">
+            <span className="text-xl sm:text-2xl font-extrabold tracking-tight text-zinc-900 dark:text-white tabular-nums">
               {formatCurrency(result.priceMin)}
             </span>
-            <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">
+            <span className="text-xs font-semibold text-zinc-400 dark:text-zinc-500">
               до
             </span>
-            <span className="text-xl sm:text-2xl font-black tracking-tight text-blue-600 dark:text-blue-400 tabular-nums">
+            <span className="text-xl sm:text-2xl font-extrabold tracking-tight text-zinc-900 dark:text-white tabular-nums">
               {formatCurrency(result.priceMax)}
             </span>
           </div>
 
-          <span className="text-[11px] font-semibold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-500/20">
-            0 ₽ аванс
+          <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
+            {result.area} м² · ~{result.estimatedDays.min} дн.
           </span>
         </div>
 
-        {/* Big Action Button */}
+        {/* Primary CTA */}
         <button
           type="button"
           onClick={handleBookingClick}
-          className="w-full py-3.5 px-5 bg-gradient-to-r from-blue-600 via-blue-500 to-cyan-500 hover:from-blue-700 hover:to-cyan-600 text-white rounded-2xl font-bold text-sm sm:text-base shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2 transition-all active:scale-[0.98] select-none"
+          className="w-full py-3.5 px-5 bg-zinc-900 hover:bg-black text-white dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-950 rounded-xl font-semibold text-sm shadow-md transition-all active:scale-[0.98] flex items-center justify-between select-none"
         >
-          <CalendarCheck className="w-5 h-5 shrink-0" />
-          <span>Забронировать бесплатный замер</span>
-          <ChevronRight className="w-4 h-4 shrink-0 opacity-70" />
+          <div className="text-left leading-tight">
+            <span className="block text-sm font-bold">Вызвать инженера на замер</span>
+            <span className="block text-[11px] opacity-75 font-normal">Бесплатно · Фиксация сметы</span>
+          </div>
+          <div className="w-8 h-8 rounded-lg bg-white/10 dark:bg-zinc-900/10 flex items-center justify-center shrink-0">
+            <ArrowRight className="w-4 h-4" />
+          </div>
         </button>
       </div>
     </div>
