@@ -42,9 +42,11 @@ const FAQ_ITEMS = [
 ];
 
 export default function App() {
-  // Theme state: dark / light
+  // Theme state: dark / light with persistent storage & Telegram sync
   const [isDark, setIsDark] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('remont_theme');
+      if (saved) return saved === 'dark';
       const tgScheme = window.Telegram?.WebApp?.colorScheme;
       if (tgScheme) return tgScheme === 'dark';
       return window.matchMedia('(prefers-color-scheme: dark)').matches;
@@ -116,13 +118,23 @@ export default function App() {
     };
   }, [activeCompanyId]);
 
-  // Sync dark class on document
+  // Sync dark class on document element and save in localStorage
   useEffect(() => {
     const root = document.documentElement;
     if (isDark) {
       root.classList.add('dark');
+      try {
+        localStorage.setItem('remont_theme', 'dark');
+      } catch {
+        // No-op
+      }
     } else {
       root.classList.remove('dark');
+      try {
+        localStorage.setItem('remont_theme', 'light');
+      } catch {
+        // No-op
+      }
     }
   }, [isDark]);
 
@@ -280,30 +292,30 @@ export default function App() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f8f8f7] dark:bg-[#121214] text-zinc-900 dark:text-zinc-100 transition-colors pb-32">
+    <div className="min-h-screen bg-[#f4f4f5] dark:bg-[#09090b] text-[#18181b] dark:text-[#f4f4f5] transition-colors pb-24 font-['Manrope',sans-serif]">
       <div className="max-w-md mx-auto">
-        {/* 1. Header: Название компании, статус, город, телефон */}
+        {/* 1. Slim Header */}
         <Header
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
         />
 
-        <main className="px-4 space-y-4 mt-2">
-          {/* 2. Тип недвижимости: Новостройка / Вторичка */}
+        <main className="px-3 space-y-2 mt-2">
+          {/* 2. Тип недвижимости */}
           <PropertyTypeSelector
             value={propertyType}
             onChange={(type) => setPropertyType(type)}
             secondaryCoeff={company.secondaryCoeff}
           />
 
-          {/* 3. Площадь: Интерактивный ползунок с крупной цифрой */}
+          {/* 3. Площадь объекта */}
           <AreaSlider
             value={area}
             onChange={(val) => setArea(val)}
           />
 
-          {/* 4. Класс ремонта: 3 тарифа */}
+          {/* 4. Тариф отделки */}
           <RenovationClassCards
             classes={dynamicClasses}
             selectedId={selectedClassId}
@@ -317,74 +329,49 @@ export default function App() {
             onToggle={handleToggleOption}
           />
 
-          {/* 6. Стандарты качества (Architectural Pillars) */}
-          <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-zinc-800/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)] space-y-3.5">
-            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block">
-              Стандарты работы
-            </span>
-
-            <div className="space-y-3">
-              {[
-                {
-                  idx: '01',
-                  title: 'Фиксированная смета',
-                  desc: 'Сумма в договоре является окончательной и не повышается в процессе ремонта.',
-                },
-                {
-                  idx: '02',
-                  title: 'Оплата этапами по факту',
-                  desc: 'Вы принимаете каждый этап лично и оплачиваете только проверенные работы.',
-                },
-                {
-                  idx: '03',
-                  title: '36 месяцев гарантии',
-                  desc: 'Официальная гарантия на все инженерные сети и чистовые покрытия по акту.',
-                },
-              ].map((pillar) => (
-                <div key={pillar.idx} className="flex items-start gap-3">
-                  <span className="text-xs font-mono font-bold text-zinc-400 dark:text-zinc-500 shrink-0 mt-0.5">
-                    {pillar.idx}
-                  </span>
-                  <div>
-                    <h5 className="text-xs font-bold text-zinc-900 dark:text-white">
-                      {pillar.title}
-                    </h5>
-                    <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-relaxed">
-                      {pillar.desc}
-                    </p>
-                  </div>
-                </div>
-              ))}
+          {/* 6. Стандарты качества (Compact 3-Column Strip) */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl p-2 border border-zinc-200 dark:border-zinc-800 shadow-xs grid grid-cols-3 gap-1.5 text-center">
+            <div className="p-1">
+              <span className="block text-xs font-bold text-zinc-950 dark:text-white">Фикс-смета</span>
+              <span className="block text-[10px] text-zinc-600 dark:text-zinc-400 mt-0.5 leading-tight">Без скрытых доплат</span>
+            </div>
+            <div className="p-1 border-x border-zinc-200 dark:border-zinc-800">
+              <span className="block text-xs font-bold text-zinc-950 dark:text-white">Пост-оплата</span>
+              <span className="block text-[10px] text-zinc-600 dark:text-zinc-400 mt-0.5 leading-tight">Оплата по акту</span>
+            </div>
+            <div className="p-1">
+              <span className="block text-xs font-bold text-zinc-950 dark:text-white">Гарантия 3 года</span>
+              <span className="block text-[10px] text-zinc-600 dark:text-zinc-400 mt-0.5 leading-tight">По договору</span>
             </div>
           </div>
 
-          {/* 7. Частые вопросы */}
-          <div className="bg-white dark:bg-zinc-900/90 rounded-2xl p-4 border border-zinc-200/80 dark:border-zinc-800/80 shadow-[0_1px_3px_rgba(0,0,0,0.03)]">
-            <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block mb-2.5">
+          {/* 7. Частые вопросы (Compact) */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl p-2.5 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+            <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block mb-1 px-1">
               Вопросы и ответы
             </span>
             <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
               {FAQ_ITEMS.map((faq, idx) => {
                 const isOpen = expandedFaq === idx;
                 return (
-                  <div key={idx} className="py-2.5">
+                  <div key={idx} className="py-2">
                     <button
                       type="button"
                       onClick={() => {
                         triggerHaptic('light');
                         setExpandedFaq(isOpen ? null : idx);
                       }}
-                      className="w-full flex items-center justify-between text-left text-xs font-semibold text-zinc-900 dark:text-zinc-200 gap-2"
+                      className="w-full flex items-center justify-between text-left text-xs font-bold text-zinc-900 dark:text-zinc-100 px-1 gap-2"
                     >
                       <span>{faq.q}</span>
                       <ChevronDown
                         className={`w-3.5 h-3.5 text-zinc-400 shrink-0 transition-transform duration-200 ${
-                          isOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
+                          isOpen ? 'rotate-180 text-zinc-950 dark:text-white' : ''
                         }`}
                       />
                     </button>
                     {isOpen && (
-                      <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-2 leading-relaxed animate-in fade-in duration-150">
+                      <p className="text-[11px] text-zinc-700 dark:text-zinc-300 mt-1.5 px-1 leading-relaxed animate-in fade-in duration-150">
                         {faq.a}
                       </p>
                     )}
@@ -395,12 +382,12 @@ export default function App() {
           </div>
 
           {/* Quick contact */}
-          <div className="text-center py-2">
-            <p className="text-[11px] text-zinc-400 dark:text-zinc-500">
-              Консультация дежурного инженера:{' '}
+          <div className="text-center py-1">
+            <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
+              Дежурный инженер:{' '}
               <a
                 href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
-                className="text-zinc-700 dark:text-zinc-300 font-semibold hover:underline"
+                className="text-zinc-900 dark:text-zinc-200 font-bold hover:underline"
               >
                 {company.phone}
               </a>

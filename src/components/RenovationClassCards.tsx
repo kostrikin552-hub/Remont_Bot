@@ -14,124 +14,115 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
   selectedId,
   onSelect,
 }) => {
-  const [expandedId, setExpandedId] = useState<RenovationClassId | null>(null);
+  const [showDetails, setShowDetails] = useState(false);
 
-  const handleCardClick = (id: RenovationClassId) => {
+  const selectedClass = classes.find((c) => c.id === selectedId) || classes[1];
+
+  const handleSelect = (id: RenovationClassId) => {
     if (selectedId !== id) {
-      triggerHaptic('selection');
+      triggerHaptic('medium');
       onSelect(id);
     }
   };
 
-  const toggleExpand = (e: React.MouseEvent, id: RenovationClassId) => {
-    e.stopPropagation();
-    triggerHaptic('light');
-    setExpandedId((prev) => (prev === id ? null : id));
-  };
-
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
+    <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+      <div className="flex items-center justify-between mb-2 px-0.5">
+        <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
           Тариф отделки
         </span>
-        <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-medium">
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
           Работа под ключ
         </span>
       </div>
 
-      <div className="grid grid-cols-1 gap-2.5">
+      {/* 3-Column Compact Selector */}
+      <div className="grid grid-cols-3 gap-1.5">
         {classes.map((item) => {
           const isSelected = selectedId === item.id;
-          const isExpanded = expandedId === item.id;
-
           return (
-            <div
+            <button
               key={item.id}
-              onClick={() => handleCardClick(item.id)}
-              className={`relative cursor-pointer rounded-2xl p-4 transition-all duration-200 border text-left ${
+              type="button"
+              onClick={() => handleSelect(item.id)}
+              className={`p-2 rounded-lg text-left transition-all border relative flex flex-col justify-between ${
                 isSelected
-                  ? 'bg-white dark:bg-zinc-900 border-zinc-900 dark:border-zinc-100 shadow-[0_4px_16px_rgba(0,0,0,0.06)] dark:shadow-[0_4px_16px_rgba(0,0,0,0.4)]'
-                  : 'bg-white/80 dark:bg-zinc-900/60 border-zinc-200/80 dark:border-zinc-800/80 hover:border-zinc-300 dark:hover:border-zinc-700'
+                  ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 border-zinc-900 dark:border-white shadow-xs'
+                  : 'bg-zinc-50 dark:bg-zinc-800/80 text-zinc-800 dark:text-zinc-200 border-zinc-200 dark:border-zinc-700 hover:border-zinc-300'
               }`}
             >
-              {/* Header row */}
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    <h3 className="font-bold text-base text-zinc-900 dark:text-white tracking-tight">
-                      {item.title}
-                    </h3>
-                    {item.popular && (
-                      <span className="text-[10px] font-semibold text-zinc-900 dark:text-zinc-100 bg-zinc-100 dark:bg-zinc-800 px-2 py-0.5 rounded-md">
-                        Хит выбора
-                      </span>
-                    )}
-                    {item.id === 'designer' && (
-                      <span className="text-[10px] font-semibold text-amber-900 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/60 px-2 py-0.5 rounded-md">
-                        Премиум
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 leading-relaxed">
-                    {item.description}
-                  </p>
-                </div>
-
-                {/* Minimal Radio Indicator */}
-                <div
-                  className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 transition-colors mt-0.5 ${
-                    isSelected
-                      ? 'bg-zinc-900 border-zinc-900 text-white dark:bg-white dark:border-white dark:text-zinc-950'
-                      : 'border-zinc-300 dark:border-zinc-600 bg-transparent'
-                  }`}
-                >
-                  {isSelected && <Check className="w-3 h-3 stroke-[3]" />}
-                </div>
-              </div>
-
-              {/* Price row */}
-              <div className="mt-3.5 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-                <div className="flex items-baseline gap-1">
-                  <span className="text-xl font-bold tracking-tight text-zinc-900 dark:text-white tabular-nums">
-                    {formatCurrency(item.pricePerMeter)}
+              <div>
+                <div className="flex items-center justify-between gap-1 mb-1">
+                  <span className="text-xs font-bold truncate">
+                    {item.title}
                   </span>
-                  <span className="text-xs text-zinc-400 dark:text-zinc-500 font-medium">
-                    / м²
-                  </span>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={(e) => toggleExpand(e, item.id)}
-                  className="text-xs font-medium text-zinc-600 dark:text-zinc-300 hover:text-zinc-900 dark:hover:text-white flex items-center gap-1 transition-colors py-1"
-                >
-                  <span>{isExpanded ? 'Скрыть состав' : 'Что входит'}</span>
-                  <ChevronDown
-                    className={`w-3.5 h-3.5 transition-transform duration-200 ${
-                      isExpanded ? 'rotate-180' : ''
-                    }`}
-                  />
-                </button>
-              </div>
-
-              {/* Collapsible Features Details */}
-              {isExpanded && (
-                <div className="mt-3 pt-3 border-t border-zinc-100 dark:border-zinc-800 space-y-1.5 animate-in fade-in duration-150">
-                  {item.features.map((feature, idx) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-2 text-xs text-zinc-600 dark:text-zinc-400"
+                  {item.popular && (
+                    <span
+                      className={`text-[9px] font-bold px-1 rounded ${
+                        isSelected
+                          ? 'bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-950'
+                          : 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200'
+                      }`}
                     >
-                      <Check className="w-3.5 h-3.5 text-zinc-400 dark:text-zinc-500 shrink-0 mt-0.5" />
-                      <span>{feature}</span>
-                    </div>
-                  ))}
+                      Хит
+                    </span>
+                  )}
                 </div>
-              )}
-            </div>
+                <div className="text-[10px] opacity-75 line-clamp-1 leading-tight">
+                  {item.id === 'cosmetic'
+                    ? 'Косметика'
+                    : item.id === 'capital'
+                    ? 'С нуля под ключ'
+                    : 'Авторский'}
+                </div>
+              </div>
+
+              <div className="mt-2 pt-1.5 border-t border-current/15">
+                <span className="text-xs font-extrabold tabular-nums block leading-tight">
+                  {formatCurrency(item.pricePerMeter)}
+                </span>
+                <span className="text-[10px] opacity-70 leading-none">за м²</span>
+              </div>
+            </button>
           );
         })}
+      </div>
+
+      {/* Selected Class Highlight & Details Toggle */}
+      <div className="mt-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-800/80">
+        <div className="flex items-center justify-between text-xs">
+          <p className="text-zinc-700 dark:text-zinc-300 text-[11px] leading-snug pr-2">
+            <strong>{selectedClass.title}:</strong> {selectedClass.description}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setShowDetails((prev) => !prev);
+            }}
+            className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 hover:underline shrink-0 flex items-center gap-0.5"
+          >
+            <span>{showDetails ? 'Скрыть' : 'Состав'}</span>
+            <ChevronDown
+              className={`w-3.5 h-3.5 transition-transform duration-200 ${
+                showDetails ? 'rotate-180' : ''
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Expandable Features List */}
+        {showDetails && (
+          <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-zinc-700 dark:text-zinc-300 animate-in fade-in duration-150">
+            {selectedClass.features.map((feature, idx) => (
+              <div key={idx} className="flex items-start gap-1.5">
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                <span className="truncate">{feature}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

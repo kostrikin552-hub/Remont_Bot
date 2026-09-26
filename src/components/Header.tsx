@@ -15,56 +15,41 @@ export const Header: React.FC<HeaderProps> = ({
   company,
 }) => {
   return (
-    <header className="pt-3 pb-3 px-4 transition-colors">
-      <div className="flex items-center justify-between gap-3">
-        {/* Architectural Brand Identity */}
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-zinc-900 dark:bg-white text-white dark:text-zinc-950 flex items-center justify-center font-bold text-base tracking-tight shrink-0 shadow-sm">
-            {company.logoLetter || company.name.charAt(0) || 'Р'}
-          </div>
-
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-lg font-bold tracking-tight text-zinc-900 dark:text-white leading-none">
-                {company.name}
-              </h1>
-              {company.city && (
-                <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400">
-                  {company.city}
-                </span>
-              )}
-            </div>
-            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1 font-normal">
-              {company.subtitle || 'Инженерный расчет стоимости ремонта'}
-            </p>
-          </div>
+    <header className="px-4 py-2.5 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-30 transition-colors">
+      <div className="flex items-center gap-2.5 min-w-0">
+        <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
+          {company.logoLetter || company.name.charAt(0) || 'Р'}
         </div>
-
-        {/* Minimal Theme Switcher */}
-        <button
-          onClick={() => {
-            triggerHaptic('light');
-            onToggleTheme();
-          }}
-          aria-label="Сменить тему оформления"
-          className="w-9 h-9 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 flex items-center justify-center transition-transform active:scale-95 shrink-0"
-        >
-          {isDark ? (
-            <Sun className="w-4 h-4 text-amber-400" />
-          ) : (
-            <Moon className="w-4 h-4 text-zinc-700" />
-          )}
-        </button>
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5">
+            <h1 className="text-sm font-bold text-zinc-950 dark:text-white truncate leading-none">
+              {company.name}
+            </h1>
+            <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium shrink-0">
+              · {company.city}
+            </span>
+          </div>
+          <p className="text-[11px] text-zinc-600 dark:text-zinc-300 font-medium leading-none mt-1">
+            Калькулятор ремонта под ключ
+          </p>
+        </div>
       </div>
 
-      {/* Quiet Trust Bar */}
-      <div className="mt-3.5 pt-2.5 border-t border-zinc-200/60 dark:border-zinc-800/60 flex items-center justify-between text-[11px] text-zinc-500 dark:text-zinc-400 font-medium tracking-tight">
-        <span>Договор и фиксация сметы</span>
-        <span className="text-zinc-300 dark:text-zinc-700">·</span>
-        <span>Оплата после приёмки</span>
-        <span className="text-zinc-300 dark:text-zinc-700">·</span>
-        <span>Выезд 0 ₽</span>
-      </div>
+      <button
+        type="button"
+        onClick={() => {
+          triggerHaptic('light');
+          onToggleTheme();
+        }}
+        aria-label="Сменить тему"
+        className="w-8 h-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center transition shrink-0"
+      >
+        {isDark ? (
+          <Sun className="w-4 h-4 text-amber-500" />
+        ) : (
+          <Moon className="w-4 h-4 text-zinc-800" />
+        )}
+      </button>
     </header>
   );
 };

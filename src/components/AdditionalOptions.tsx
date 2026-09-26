@@ -19,58 +19,58 @@ export const AdditionalOptions: React.FC<AdditionalOptionsProps> = ({
   };
 
   return (
-    <div className="space-y-2.5">
-      <div className="flex items-center justify-between px-1">
-        <span className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
+    <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+      <div className="flex items-center justify-between mb-1.5 px-0.5">
+        <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
           Дополнительные опции
         </span>
-        <span className="text-[11px] text-zinc-400 dark:text-zinc-500 font-medium">
-          По запросу
+        <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
+          По желанию
         </span>
       </div>
 
-      <div className="bg-white dark:bg-zinc-900/90 rounded-2xl border border-zinc-200/80 dark:border-zinc-800/80 divide-y divide-zinc-100 dark:divide-zinc-800 shadow-[0_1px_3px_rgba(0,0,0,0.03)] overflow-hidden">
+      <div className="divide-y divide-zinc-100 dark:divide-zinc-800">
         {options.map((option) => {
           const totalOptionCost = option.pricePerMeter * area;
           return (
             <div
               key={option.id}
               onClick={() => handleToggle(option.id)}
-              className="flex items-center justify-between p-4 cursor-pointer hover:bg-zinc-50/70 dark:hover:bg-zinc-800/40 transition-colors select-none"
+              className="flex items-center justify-between py-2 cursor-pointer hover:bg-zinc-50 dark:hover:bg-zinc-800/50 rounded-lg px-1 transition-colors select-none"
             >
-              <div className="pr-3">
-                <div className="flex items-center gap-2 flex-wrap">
-                  <h4 className="text-sm font-semibold text-zinc-900 dark:text-white">
+              <div className="pr-2 min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <h4 className="text-xs font-bold text-zinc-950 dark:text-white">
                     {option.title}
                   </h4>
-                  <span className="text-[11px] font-medium text-zinc-500 dark:text-zinc-400 tabular-nums">
+                  <span className="text-[11px] font-semibold text-zinc-600 dark:text-zinc-400 tabular-nums">
                     +{formatCurrency(option.pricePerMeter)}/м²
                   </span>
                 </div>
-                <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5 leading-relaxed">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
                   {option.subtitle}
                 </p>
                 {option.enabled && (
-                  <p className="text-xs font-semibold text-zinc-900 dark:text-zinc-100 mt-1 tabular-nums">
-                    К сметным работам: +{formatCurrency(totalOptionCost)}
-                  </p>
+                  <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 tabular-nums">
+                    Итого к смете: +{formatCurrency(totalOptionCost)}
+                  </span>
                 )}
               </div>
 
-              {/* Minimal Native Switch */}
+              {/* Native Toggle Switch */}
               <button
                 type="button"
                 role="switch"
                 aria-checked={option.enabled}
-                className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
+                className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${
                   option.enabled
                     ? 'bg-zinc-900 dark:bg-white'
                     : 'bg-zinc-200 dark:bg-zinc-700'
                 }`}
               >
                 <span
-                  className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white dark:bg-zinc-950 shadow-sm transition duration-200 ease-in-out ${
-                    option.enabled ? 'translate-x-5' : 'translate-x-0'
+                  className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white dark:bg-zinc-950 shadow-xs transition duration-200 ease-in-out ${
+                    option.enabled ? 'translate-x-4' : 'translate-x-0'
                   }`}
                 />
               </button>
