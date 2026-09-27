@@ -7,6 +7,7 @@ import {
   CalculationResult,
   CompanyConfig,
   PricingRules,
+  EstimateItem,
 } from './types';
 import { Header } from './components/Header';
 import { PropertyTypeSelector } from './components/PropertyTypeSelector';
@@ -14,10 +15,15 @@ import { AreaSlider } from './components/AreaSlider';
 import { RenovationClassCards } from './components/RenovationClassCards';
 import { AdditionalOptions } from './components/AdditionalOptions';
 import { StickyBottomBar } from './components/StickyBottomBar';
-import { CalculationBreakdownModal } from './components/CalculationBreakdownModal';
+import { DetailedEstimateSection } from './components/DetailedEstimateSection';
 import { BookingModal } from './components/BookingModal';
 import { AppSkeleton } from './components/AppSkeleton';
 import { initTelegramApp, triggerHaptic } from './utils/telegram';
+import {
+  getCompanyEstimateItems,
+  calculateDetailedEstimate,
+  saveCompanyEstimateItems,
+} from './utils/estimates';
 import {
   getCompanyIdFromContext,
   fetchCompanyData,
@@ -28,16 +34,20 @@ import { ChevronDown } from 'lucide-react';
 
 const FAQ_ITEMS = [
   {
+    q: 'Как формируется смета в калькуляторе?',
+    a: 'Все расчёты строятся строго по действующим технологическим картам и расценкам компании за единицу работы. Вы можете в реальном времени исключать ненужные работы галочками — сумма пересчитывается моментально.',
+  },
+  {
     q: 'Что входит в бесплатный замер?',
-    a: 'Инженер с лазерным дальномером проводит точные обмеры каждого помещения, проверяет перепады пола и стен, оценивает состояние электропроводки и составляет точную смету с фиксированной ценой.',
+    a: 'Инженер с лазерным дальномером проводит точные обмеры каждого помещения, проверяет перепады пола и стен, оценивает состояние электропроводки и фиксирует финальную смету без скрытых доплат.',
   },
   {
     q: 'Действительно ли работаете без предоплаты?',
-    a: 'Да! Вы не платите аванс за работу. Оплата происходит поэтапно: мы выполняем согласованный этап (например, демонтаж или черновую электрику), вы принимаете качество и только после этого оплачиваете.',
+    a: 'Да! Вы не платите аванс за работу. Оплата происходит поэтапно: мы выполняем согласованный этап (например, демонтаж или черновую электрику), вы принимаете качество по акту и только после этого оплачиваете.',
   },
   {
     q: 'Кто покупает строительные материалы?',
-    a: 'Вы можете закупать материалы самостоятельно, либо доверить это нам. Мы сотрудничаем напрямую с производителями Knauf, Ceresit, Rehau и закупаем черновые материалы по оптовым ценам с доставкой и подъемом.',
+    a: 'Вы можете закупать материалы сами, либо включить комплектацию в калькуляторе. Мы закупаем черновые смеси, кабели и трубы напрямую у производителей (Knauf, Ceresit, Rehau) по оптовым ценам с доставкой и подъемом.',
   },
 ];
 
@@ -63,7 +73,6 @@ export default function App() {
   const [pricing, setPricing] = useState<PricingRules>(
     () => DEMO_COMPANIES[DEFAULT_COMPANY_ID].pricing
   );
-  const [isFromSupabase, setIsFromSupabase] = useState<boolean>(false);
 
   // Calculator State
   const [propertyType, setPropertyType] = useState<PropertyType>('new');
@@ -79,8 +88,13 @@ export default function App() {
     materials: false,
   });
 
-  // Modals
-  const [isBreakdownOpen, setIsBreakdownOpen] = useState(false);
+  // Estimate state loaded directly for active company
+  const [items, setItems] = useState<EstimateItem[]>(() =>
+    getCompanyEstimateItems(company.id, pricing)
+  );
+  const [excludedItemIds, setExcludedItemIds] = useState<string[]>([]);
+
+  // Modals & UI
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
@@ -100,7 +114,9 @@ export default function App() {
         if (!isCancelled) {
           setCompany(data.company);
           setPricing(data.pricing);
-          setIsFromSupabase(data.isFromSupabase);
+          const companyItems = getCompanyEstimateItems(data.company.id, data.pricing);
+          setItems(companyItems);
+          setExcludedItemIds([]);
         }
       } catch (err) {
         console.error('Error fetching company:', err);
@@ -143,18 +159,7 @@ export default function App() {
     setIsDark((prev) => !prev);
   };
 
-  // Switch Company Tenant
-  const handleSelectCompanyId = (newCompanyId: string) => {
-    setActiveCompanyId(newCompanyId);
-    // Update URL query param cleanly without full page reload
-    if (typeof window !== 'undefined' && window.history?.pushState) {
-      const url = new URL(window.location.href);
-      url.searchParams.set('company_id', newCompanyId);
-      window.history.pushState({}, '', url.toString());
-    }
-  };
-
-  // Dynamic Renovation Classes based on company's pricing
+  // Dynamic Renovation Classes
   const dynamicClasses: RenovationClass[] = useMemo(() => {
     return [
       {
@@ -199,7 +204,7 @@ export default function App() {
     ];
   }, [pricing]);
 
-  // Dynamic Additional Options based on company's pricing
+  // Dynamic Additional Options
   const dynamicOptions: AdditionalOption[] = useMemo(() => {
     return [
       {
@@ -237,23 +242,50 @@ export default function App() {
     }));
   };
 
-  // Calculations: Formula: (Площадь * База * Коэфф) + Допы
+  // Estimate Items Management
+  const handleUpdateItems = (updated: EstimateItem[]) => {
+    setItems(updated);
+    saveCompanyEstimateItems(company.id, updated);
+  };
+
+  const handleResetItems = () => {
+    if (typeof window !== 'undefined') {
+      localStorage.removeItem(`company_estimate_${company.id}`);
+    }
+    const fresh = getCompanyEstimateItems(company.id, pricing);
+    setItems(fresh);
+    setExcludedItemIds([]);
+  };
+
+  const handleToggleItemExclusion = (itemId: string) => {
+    setExcludedItemIds((prev) =>
+      prev.includes(itemId) ? prev.filter((id) => id !== itemId) : [...prev, itemId]
+    );
+  };
+
+  const handleRestoreAllItems = () => {
+    setExcludedItemIds([]);
+  };
+
+  // Exact Estimate Calculation - SINGLE SOURCE OF TRUTH FOR ALL CALCULATOR PRICES
+  const estimateData = useMemo(() => {
+    return calculateDetailedEstimate(
+      items,
+      area,
+      propertyType,
+      company.secondaryCoeff,
+      selectedClassId,
+      dynamicOptions,
+      excludedItemIds
+    );
+  }, [items, area, propertyType, company.secondaryCoeff, selectedClassId, dynamicOptions, excludedItemIds]);
+
+  // Unified Calculator Result derived strictly from the estimate
   const calculation: CalculationResult = useMemo(() => {
     const selectedClass =
       dynamicClasses.find((c) => c.id === selectedClassId) || dynamicClasses[1];
     const propertyCoeff = propertyType === 'secondary' ? company.secondaryCoeff : 1.0;
 
-    const baseWorkCost = Math.round(area * selectedClass.pricePerMeter * propertyCoeff);
-
-    const activeOptions = dynamicOptions.filter((o) => o.enabled);
-    const addonsCost = activeOptions.reduce((acc, opt) => acc + opt.pricePerMeter * area, 0);
-
-    const totalCost = baseWorkCost + addonsCost;
-    // Price range: X (-5%) to Y (+10%)
-    const priceMin = Math.round(totalCost * 0.95);
-    const priceMax = Math.round(totalCost * 1.1);
-
-    // Days estimate
     let daysBase = { min: 20, max: 35 };
     if (selectedClassId === 'cosmetic') {
       daysBase = {
@@ -277,15 +309,15 @@ export default function App() {
       propertyType,
       propertyTypeCoeff: propertyCoeff,
       renovationClass: selectedClass,
-      activeOptions,
-      baseWorkCost,
-      addonsCost,
-      totalCost,
-      priceMin,
-      priceMax,
+      activeOptions: dynamicOptions.filter((o) => o.enabled),
+      baseWorkCost: estimateData.worksTotal,
+      addonsCost: estimateData.materialsTotal,
+      totalCost: estimateData.grandTotal,
+      priceMin: estimateData.grandTotal,
+      priceMax: estimateData.grandTotal,
       estimatedDays: daysBase,
     };
-  }, [area, propertyType, selectedClassId, dynamicClasses, dynamicOptions, company.secondaryCoeff]);
+  }, [area, propertyType, selectedClassId, dynamicClasses, dynamicOptions, company.secondaryCoeff, estimateData]);
 
   if (isLoadingCompany) {
     return <AppSkeleton />;
@@ -294,43 +326,59 @@ export default function App() {
   return (
     <div className="min-h-screen bg-[#f4f4f5] dark:bg-[#09090b] text-[#18181b] dark:text-[#f4f4f5] transition-colors pb-24 font-['Manrope',sans-serif]">
       <div className="max-w-md mx-auto">
-        {/* 1. Slim Header */}
+        {/* Header with Company Branding & Theme Switcher */}
         <Header
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
         />
 
-        <main className="px-3 space-y-2 mt-2">
-          {/* 2. Тип недвижимости */}
+        {/* Main Unified Calculator */}
+        <main className="px-3 space-y-2.5 mt-2">
+          {/* 1. Тип недвижимости */}
           <PropertyTypeSelector
             value={propertyType}
             onChange={(type) => setPropertyType(type)}
             secondaryCoeff={company.secondaryCoeff}
           />
 
-          {/* 3. Площадь объекта */}
+          {/* 2. Площадь объекта */}
           <AreaSlider
             value={area}
             onChange={(val) => setArea(val)}
           />
 
-          {/* 4. Тариф отделки */}
+          {/* 3. Тариф отделки */}
           <RenovationClassCards
             classes={dynamicClasses}
             selectedId={selectedClassId}
             onSelect={(id) => setSelectedClassId(id)}
           />
 
-          {/* 5. Дополнительные опции */}
+          {/* 4. Дополнительные опции */}
           <AdditionalOptions
             options={dynamicOptions}
             area={area}
             onToggle={handleToggleOption}
           />
 
-          {/* 6. Стандарты качества (Compact 3-Column Strip) */}
-          <div className="bg-white dark:bg-zinc-900 rounded-xl p-2 border border-zinc-200 dark:border-zinc-800 shadow-xs grid grid-cols-3 gap-1.5 text-center">
+          {/* 5. Построчная смета работ и материалов (Строго по расценкам компании) */}
+          <DetailedEstimateSection
+            result={calculation}
+            company={company}
+            pricing={pricing}
+            items={items}
+            onUpdateItems={handleUpdateItems}
+            onResetItems={handleResetItems}
+            excludedItemIds={excludedItemIds}
+            onToggleItemExclusion={handleToggleItemExclusion}
+            onRestoreAllItems={handleRestoreAllItems}
+            estimateData={estimateData}
+            onOpenBooking={() => setIsBookingOpen(true)}
+          />
+
+          {/* 6. Стандарты качества */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl p-2.5 border border-zinc-200 dark:border-zinc-800 shadow-xs grid grid-cols-3 gap-1.5 text-center">
             <div className="p-1">
               <span className="block text-xs font-bold text-zinc-950 dark:text-white">Фикс-смета</span>
               <span className="block text-[10px] text-zinc-600 dark:text-zinc-400 mt-0.5 leading-tight">Без скрытых доплат</span>
@@ -345,8 +393,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* 7. Частые вопросы (Compact) */}
-          <div className="bg-white dark:bg-zinc-900 rounded-xl p-2.5 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+          {/* 7. Частые вопросы */}
+          <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs">
             <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider block mb-1 px-1">
               Вопросы и ответы
             </span>
@@ -381,7 +429,7 @@ export default function App() {
             </div>
           </div>
 
-          {/* Quick contact */}
+          {/* Дежурный инженер */}
           <div className="text-center py-1">
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
               Дежурный инженер:{' '}
@@ -398,21 +446,8 @@ export default function App() {
         {/* Sticky Bottom Calculation Bar */}
         <StickyBottomBar
           result={calculation}
-          onOpenBreakdown={() => setIsBreakdownOpen(true)}
           onOpenBooking={() => setIsBookingOpen(true)}
         />
-
-        {/* Detailed Breakdown Modal */}
-        {isBreakdownOpen && (
-          <CalculationBreakdownModal
-            result={calculation}
-            onClose={() => setIsBreakdownOpen(false)}
-            onOpenBooking={() => {
-              setIsBreakdownOpen(false);
-              setIsBookingOpen(true);
-            }}
-          />
-        )}
 
         {/* Booking Modal */}
         {isBookingOpen && (

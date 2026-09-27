@@ -155,7 +155,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                 </p>
               </div>
 
-              <div className="bg-zinc-50 dark:bg-zinc-850 p-4 rounded-xl text-left border border-zinc-200/60 dark:border-zinc-800 text-xs space-y-2">
+              <div className="bg-zinc-50 dark:bg-zinc-800 p-4 rounded-xl text-left border border-zinc-200/80 dark:border-zinc-700 text-xs space-y-2">
                 <div className="flex justify-between items-center pb-2 border-b border-zinc-200/50 dark:border-zinc-800">
                   <span className="text-zinc-400">Номер заявки:</span>
                   <span className="font-mono font-bold text-zinc-900 dark:text-white">{bookingCode}</span>

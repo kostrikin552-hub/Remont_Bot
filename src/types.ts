@@ -82,3 +82,38 @@ export interface LeadPayload {
   comment?: string;
   agreement_152fz: boolean;
 }
+
+export type EstimateCategoryType =
+  | 'demolition'
+  | 'rough'
+  | 'engineering'
+  | 'finishing'
+  | 'materials';
+
+export interface EstimateItem {
+  id: string;
+  category: EstimateCategoryType;
+  title: string;
+  unit: string; // 'м²', 'пог. м', 'точка', 'шт.', 'комплект'
+  quantityRatio: number; // множитель от площади (например 2.6 для стен)
+  unitPrice: number; // расценка компании за единицу
+  tariffApplicability?: RenovationClassId[];
+  description?: string;
+}
+
+export interface CalculatedEstimateItem {
+  item: EstimateItem;
+  quantity: number;
+  subtotal: number;
+  excluded?: boolean;
+}
+
+export interface EstimateCategoryGroup {
+  category: EstimateCategoryType;
+  title: string;
+  badge: string;
+  description: string;
+  totalCost: number;
+  items: CalculatedEstimateItem[];
+}
+
