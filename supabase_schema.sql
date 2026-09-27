@@ -26,6 +26,7 @@ ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS bot_username TEXT;
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS subscription_status TEXT DEFAULT 'expired';
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS subscription_until TIMESTAMP WITH TIME ZONE;
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS plan_id TEXT DEFAULT '1m';
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS trial_leads_used INT DEFAULT 0;
 
 -- 2. Таблица тарифов и расценок ремонта для каждой компании
 CREATE TABLE IF NOT EXISTS public.pricing_rules (
@@ -56,6 +57,7 @@ CREATE TABLE IF NOT EXISTS public.leads (
     active_options JSONB DEFAULT '[]'::jsonb,
     preferred_date TEXT,
     communication TEXT,
+    address TEXT,
     comment TEXT,
     status TEXT DEFAULT 'new',
     agreement_152fz BOOLEAN NOT NULL DEFAULT true,

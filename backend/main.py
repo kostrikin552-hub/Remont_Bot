@@ -39,9 +39,11 @@ try:
         SUBSCRIPTION_PRICE,
         TRIAL_LEADS_COUNT,
         activate_subscription_for_company,
+        check_and_consume_lead_access,
         create_payment_url,
         get_company_subscription,
         get_plan,
+        mask_address,
         mask_client_name,
         mask_client_phone,
         save_company_subscription,
@@ -53,9 +55,11 @@ except ImportError:
         SUBSCRIPTION_PRICE,
         TRIAL_LEADS_COUNT,
         activate_subscription_for_company,
+        check_and_consume_lead_access,
         create_payment_url,
         get_company_subscription,
         get_plan,
+        mask_address,
         mask_client_name,
         mask_client_phone,
         save_company_subscription,
@@ -272,18 +276,29 @@ async def master_cmd_subscription(message: Message):
     until = sub_info.get("subscription_until")
     days_left = sub_info.get("days_left", 0)
 
+    trial_used = sub_info.get("trial_leads_used", 0)
+    trial_left = max(0, 3 - trial_used)
+
     if is_active and until:
         until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
         status_line = (
             f"🟢 <b>Статус: Подписка активна</b>\n"
             f"📅 Срок действия: до <b>{until_dt.strftime('%d.%m.%Y')}</b> (осталось {days_left} дн.)\n"
-            f"🚀 <b>Бот работает в штатном режиме</b> и принимает заявки клиентов."
+            f"🚀 <b>Приём заявок:</b> Без ограничений (все контакты клиентов открыты)."
+        )
+    elif trial_used < 3:
+        status_line = (
+            f"🎁 <b>Статус: Бесплатный триал (Usage-Based Freemium)</b>\n"
+            f"📊 <b>Использовано заявок:</b> {trial_used} из 3\n"
+            f"⚡️ <b>Осталось полных бесплатных заявок:</b> {trial_left}\n"
+            f"💡 <i>Вам доступны 3 бесплатные заявки с полными контактами заказчиков. "
+            f"Начиная с 4-й заявки контакты маскируются до оплаты подписки.</i>"
         )
     else:
         status_line = (
-            "🔴 <b>Статус: Подписка истекла / не оплачена</b>\n"
-            "⛔️ <b>Внимание: бот компании остановлен!</b>\n"
-            "Приём заявок через калькулятор заблокирован до продления подписки."
+            "🔒 <b>Статус: 3 бесплатные заявки триала исчерпаны!</b>\n"
+            "⚠️ Новые заявки клиентов поступают в замаскированном виде (+7 (999) ***-**-42).\n"
+            "Для снятия маски со всех клиентов и получения прямых номеров оплатите подписку."
         )
 
     text = (
@@ -398,11 +413,15 @@ async def master_cmd_start(message: Message, state: FSMContext):
         is_active = sub_info.get("is_active", False)
         until = sub_info.get("subscription_until")
 
+        trial_used = sub_info.get("trial_leads_used", 0)
+        trial_left = max(0, 3 - trial_used)
         if is_active and until:
             until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
             status_desc = f"🟢 Активна (до {until_dt.strftime('%d.%m.%Y')})"
+        elif trial_used < 3:
+            status_desc = f"🎁 <b>Бесплатный триал:</b> {trial_used}/3 использовано (осталось {trial_left})"
         else:
-            status_desc = "🔴 <b>Истекла — бот остановлен!</b>"
+            status_desc = "🔒 <b>Триал 3 заявок исчерпан</b> (новые контакты маскируются до оплаты)"
 
         welcome_back = (
             f"👋 <b>С возвращением, {cname}!</b>\n\n"
@@ -657,6 +676,7 @@ class LeadCreateRequest(BaseModel):
     active_options: Optional[List[str]] = Field(default_factory=list)
     preferred_date: Optional[str] = Field(default="Завтра", description="Желаемая дата замера")
     communication: Optional[str] = Field(default="telegram", description="telegram | whatsapp | call")
+    address: Optional[str] = Field(default=None, description="Адрес объекта или ЖК")
     comment: Optional[str] = Field(default=None)
     agreement_152fz: bool = Field(default=True)
 
@@ -833,17 +853,28 @@ async def client_bot_webhook(company_id: str, request: Request):
 
     # Команда /subscription (кабинет подписки)
     if text == "/subscription":
+        trial_used = sub_info.get("trial_leads_used", 0)
+        trial_left = max(0, 3 - trial_used)
         if is_active and until:
             until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
             status_desc = (
                 f"🟢 <b>Статус: Подписка активна</b>\n"
                 f"📅 Срок действия: до <b>{until_dt.strftime('%d.%m.%Y')}</b> (осталось {days_left} дн.)\n"
-                f"🚀 <b>Бот работает в штатном режиме</b> и принимает заявки."
+                f"🚀 <b>Приём заявок:</b> Без ограничений (все контакты клиентов открыты)."
+            )
+        elif trial_used < 3:
+            status_desc = (
+                f"🎁 <b>Статус: Бесплатный триал (Usage-Based Freemium)</b>\n"
+                f"📊 <b>Использовано заявок:</b> {trial_used} из 3\n"
+                f"⚡️ <b>Осталось полных бесплатных заявок:</b> {trial_left}\n"
+                f"💡 <i>Первые 3 заявки приходят с полными номерами телефонов и адресами. "
+                f"Заявка 4 и далее поступает в замаскированном виде до оплаты подписки.</i>"
             )
         else:
             status_desc = (
-                "🔴 <b>Статус: Подписка истекла / не оплачена</b>\n"
-                "⛔️ <b>Внимание: бот остановлен!</b> Приём заявок через калькулятор заблокирован."
+                "🔒 <b>Статус: 3 бесплатные заявки триала исчерпаны!</b>\n"
+                "⚠️ Новые заявки поступают с замаскированными контактами (+7 (999) ***-**-42).\n"
+                "Для снятия маски и получения прямых контактов клиентов выберите тариф:"
             )
 
         sub_text = (
@@ -853,7 +884,7 @@ async def client_bot_webhook(company_id: str, request: Request):
             "• <b>1 месяц</b> — 2 990 ₽\n"
             "• <b>3 месяца</b> — 7 990 ₽ (-11%)\n"
             "• <b>1 год</b> — 24 990 ₽ (-30%)\n\n"
-            "Выберите тариф для продления или запуска бота:"
+            "Выберите тариф для активации безлимитного доступа:"
         )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -879,7 +910,7 @@ async def client_bot_webhook(company_id: str, request: Request):
             "• <b>1 месяц</b> — 2 990 ₽\n"
             "• <b>3 месяца</b> — 7 990 ₽ (скидка 11%)\n"
             "• <b>1 год</b> — 24 990 ₽ (скидка 30%)\n\n"
-            "После оплаты бот сразу запускается, а все скрытые заявки мгновенно открываются."
+            "После оплаты все заблокированные заявки мгновенно открываются."
         )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -897,52 +928,9 @@ async def client_bot_webhook(company_id: str, request: Request):
         return Response(status_code=status.HTTP_200_OK)
 
     # -----------------------------------------------------------------------
-    # КРИТИЧЕСКОЕ ПРАВИЛО: ЕСЛИ ПОДПИСКА ИСТЕКЛА — БОТ ОСТАНАВЛИВАЕТСЯ!
+    # Usage-Based Freemium: Клиенты (B2C) ВСЕГДА имеют доступ к калькулятору и смете!
+    # Их опыт не ломается, заявки успешно сохраняются и рассчитываются.
     # -----------------------------------------------------------------------
-    if not is_active:
-        if is_admin:
-            # Предупреждение владельцу/прорабу компании
-            halted_admin_text = (
-                "⛔️ <b>Внимание! Бот остановлен — подписка вашей компании истекла!</b>\n\n"
-                "Клиенты не могут рассчитывать смету и отправлять заявки.\n"
-                "Для возобновления работы бота и приёма заявок выберите и оплатите тариф:"
-            )
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
-                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                        json={
-                            "chat_id": chat_id,
-                            "text": halted_admin_text,
-                            "parse_mode": "HTML",
-                            "reply_markup": subscription_keyboard,
-                        },
-                    )
-            except Exception as e:
-                logger.error(f"Ошибка отправки предупреждения прорабу: {e}")
-            return Response(status_code=status.HTTP_200_OK)
-        else:
-            # Для клиентов: бот остановлен и не показывает калькулятор
-            company_phone = company_data.get("phone", "+7 (800) 555-35-35")
-            halted_client_text = (
-                "⚠️ <b>Сервис временно недоступен</b>\n\n"
-                f"Приём заявок через онлайн-калькулятор компании «{comp_name}» временно приостановлен.\n\n"
-                f"Пожалуйста, свяжитесь с нами напрямую по телефону:\n"
-                f"📞 <b>{company_phone}</b>"
-            )
-            try:
-                async with httpx.AsyncClient(timeout=10.0) as client:
-                    await client.post(
-                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                        json={
-                            "chat_id": chat_id,
-                            "text": halted_client_text,
-                            "parse_mode": "HTML",
-                        },
-                    )
-            except Exception as e:
-                logger.error(f"Ошибка отправки сообщения клиенту остановленного бота: {e}")
-            return Response(status_code=status.HTTP_200_OK)
 
     # -----------------------------------------------------------------------
     # ЕСЛИ ПОДПИСКА АКТИВНА: штатная работа бота для клиентов ЧЕРЕЗ КНОПКИ
@@ -1316,26 +1304,16 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     bot_token = (company.get("bot_token") if company else None) or MASTER_BOT_TOKEN
     comp_identifier = (company.get("bot_username") if company else None) or lead.company_id
 
-    # 2. Проверка подписки компании (без триала: приём заявок только по подписке)
-    sub_info = get_company_subscription(comp_identifier, company, supabase_client)
-    is_active_sub = sub_info.get("is_active", False)
-    until = sub_info.get("subscription_until")
+    # 2. Проверка доступа и триала компании (Usage-Based Freemium)
+    access_info = check_and_consume_lead_access(comp_identifier, company, supabase_client)
+    can_view_full = access_info.get("can_view_full", False)
+    is_trial = access_info.get("is_trial", False)
+    is_paid = access_info.get("is_paid", False)
+    trial_num = access_info.get("trial_num", 1)
+    trial_left = access_info.get("trial_left", 0)
+    lead_db_status = access_info.get("lead_status", "new")  # 'new' (полный доступ) или 'locked' (замаскированный)
 
-    is_paywall = False
-    lead_db_status = "new"
-    status_footer = ""
-
-    if is_active_sub and until:
-        # Подписка активна: полная карточка лида
-        lead_db_status = "new"
-        until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
-        status_footer = f"\n\n⭐️ <i>Статус: Подписка активна (до {until_dt.strftime('%d.%m.%Y')})</i>"
-    else:
-        # Подписка истекла или не оплачена -> PAYWALL!
-        is_paywall = True
-        lead_db_status = "paywall_locked"
-
-    # 3. Сохранение в Supabase (со статусом new или paywall_locked)
+    # 3. Сохранение в Supabase (со статусом new или locked)
     if supabase_client:
         try:
             insert_data = {
@@ -1343,6 +1321,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                 "client_name": lead.name,
                 "client_phone": lead.phone,
                 "contact_channel": lead.communication or "telegram",
+                "address": lead.address,
                 "preferred_date": lead.preferred_date,
                 "housing_type": "Новостройка" if lead.property_type == "new" else "Вторичка",
                 "repair_type": lead.renovation_class,
@@ -1355,7 +1334,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             db_res = supabase_client.table("leads").insert(insert_data).execute()
             if db_res.data and len(db_res.data) > 0:
                 lead_id = str(db_res.data[0].get("id", lead_id))
-            logger.info(f"Лид {lead_id} (статус={lead_db_status}) успешно записан в Supabase.")
+            logger.info(f"Лид {lead_id} (статус={lead_db_status}, full={can_view_full}) успешно записан в Supabase.")
         except Exception as e:
             logger.error(f"Ошибка записи лида в Supabase: {e}")
 
@@ -1375,59 +1354,96 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     housing_type = "Новостройка" if lead.property_type == "new" else "Вторичка"
     min_cost = f"{lead.price_min:,.0f}".replace(",", " ")
     max_cost = f"{lead.price_max:,.0f}".replace(",", " ")
+    total_cost_num = lead.total_base_cost or lead.price_max or lead.price_min
+    total_cost_str = f"{total_cost_num:,.0f}".replace(",", " ")
     digits_only = re.sub(r"[^0-9]", "", clean_phone)
 
-    if is_paywall:
-        # Маскируем контакты клиента при пейволле
+    options_list = lead.active_options or []
+    options_str = ""
+    if options_list:
+        clean_opts = [html.escape(opt) for opt in options_list[:4]]
+        options_str = f"🔧 <b>Доп. опции:</b> {', '.join(clean_opts)}\n"
+
+    comp_name = company.get("name") if company else "Ваша компания"
+    _, url_1m = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "1m")
+    _, url_3m = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "3m")
+    _, url_1y = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "1y")
+
+    if not can_view_full:
+        # ЗАЯВКА 4 И ДАЛЕЕ (Soft Paywall / Masked Lead)
         masked_name = mask_client_name(lead.name)
         masked_phone = mask_client_phone(lead.phone)
-        comp_name = company.get("name") if company else "Ваша компания"
-
-        _, url_1m = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "1m")
-        _, url_3m = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "3m")
-        _, url_1y = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "1y")
+        masked_addr = mask_address(lead.address)
 
         notification_text = (
-            "⚠️ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР! БОТ ОСТАНОВЛЕН</b>\n"
+            "🔒 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР! КОНТАКТЫ ЗАМАСКИРОВАНЫ</b>\n"
             "━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>Клиент:</b> {html.escape(masked_name)}\n"
             f"📱 <b>Телефон:</b> <code>{html.escape(masked_phone)}</code>\n"
+            f"📍 <b>Адрес:</b> {html.escape(masked_addr)}\n"
             f"💬 <b>Связь:</b> {html.escape(channel_name)}\n"
-            f"📅 <b>Желаемая дата замера:</b> {html.escape(str(lead.preferred_date or 'Не указана'))}\n\n"
+            f"📅 <b>Желаемая дата:</b> {html.escape(str(lead.preferred_date or 'Не указана'))}\n\n"
             f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м², {lead.renovation_class}\n"
-            f"💰 <b>Оценка сметы:</b> от {min_cost} до {max_cost} ₽\n"
+            f"💰 <b>Сумма сметы:</b> <b>{total_cost_str} ₽</b>\n"
+            f"{options_str}"
             "━━━━━━━━━━━━━━━━━━\n"
-            "🔒 <b>Контакты скрыты! Подписка компании истекла / не оплачена.</b>\n"
-            "Оплатите подписку, чтобы перезапустить бота и моментально открыть полные контакты заказчика:"
+            "⚠️ <b>3 бесплатные заявки триала исчерпаны!</b>\n"
+            f"Клиент только что зафиксировал смету на <b>{total_cost_str} ₽</b> и ожидает звонка для выезда на замер.\n\n"
+            "👉 Нажмите кнопку ниже, чтобы снять маску с телефона и адреса заказчика:"
         )
 
         inline_keyboard = [
-            [{"text": "💳 1 месяц — 2 990 ₽", "url": url_1m}],
-            [{"text": "🔥 3 месяца — 7 990 ₽ (-11%)", "url": url_3m}],
-            [{"text": "💎 1 год — 24 990 ₽ (-30%)", "url": url_1y}],
+            [{"text": "🔓 Разблокировать клиента за 2 990 ₽/мес", "url": url_1m}],
+            [
+                {"text": "🔥 3 мес (-11%) — 7 990 ₽", "url": url_3m},
+                {"text": "💎 1 год (-30%) — 24 990 ₽", "url": url_1y},
+            ],
         ]
     else:
-        # Полные контакты (trial или активная подписка)
+        # Заявка 1, 2, 3 (Trial) ИЛИ Активная платная подписка
         safe_name = html.escape(str(lead.name or "Не указано"))
         safe_phone = html.escape(str(lead.phone or ""))
         safe_date = html.escape(str(lead.preferred_date or "Не указана"))
         safe_comm = html.escape(str(channel_name))
+        safe_addr = html.escape(str(lead.address or "г. Москва (уточняется на замере)"))
+
+        if is_trial:
+            trial_header = (
+                f"🎁 <b>БЕСПЛАТНЫЙ ТРИАЛ:</b> Заявка {trial_num} из {TRIAL_LEADS_COUNT}\n"
+                f"<i>(Осталось бесплатных заявок: {trial_left})</i>\n\n"
+            )
+            trial_footer = (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"💡 <i>Вам предоставлены полные контакты заказчика в рамках бесплатного триала (3 заявки).</i>"
+            )
+        else:
+            sub_until = access_info.get("subscription_until")
+            until_dt = sub_until.replace(tzinfo=timezone.utc) if (sub_until and sub_until.tzinfo is None) else sub_until
+            until_str = until_dt.strftime("%d.%m.%Y") if until_dt else ""
+            trial_header = f"⭐️ <b>Подписка активна:</b> до {until_str}\n\n"
+            trial_footer = (
+                f"━━━━━━━━━━━━━━━━━━\n"
+                f"✅ <i>Заявка принята в работу без ограничений.</i>"
+            )
 
         notification_text = (
-            "🚨 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР!</b>\n"
+            f"🚨 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР!</b>\n"
             "━━━━━━━━━━━━━━━━━━\n"
+            f"{trial_header}"
             f"👤 <b>Клиент:</b> {safe_name}\n"
             f"📱 <b>Телефон:</b> <code>{safe_phone}</code>\n"
+            f"📍 <b>Адрес:</b> {safe_addr}\n"
             f"💬 <b>Связь:</b> {safe_comm}\n"
             f"📅 <b>Желаемая дата замера:</b> {safe_date}\n\n"
             f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м², {lead.renovation_class}\n"
-            f"💰 <b>Оценка:</b> от {min_cost} до {max_cost} ₽\n"
-            f"━━━━━━━━━━━━━━━━━━{status_footer}"
+            f"💰 <b>Сумма сметы:</b> <b>{total_cost_str} ₽</b>\n"
+            f"{options_str}"
+            f"{trial_footer}"
         )
 
         inline_keyboard = []
         if digits_only:
-            inline_keyboard.append([{"text": "💬 Открыть WhatsApp", "url": f"https://wa.me/{digits_only}"}])
+            inline_keyboard.append([{"text": "💬 Написать в WhatsApp", "url": f"https://wa.me/{digits_only}"}])
 
     # 5. Отправка мгновенного push-сообщения прорабу
     if admin_chat_id and bot_token:
@@ -1446,19 +1462,20 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                     json=send_payload,
                 )
                 if res.status_code == 200:
-                    logger.info(f"Уведомление прорабу (chat_id={admin_chat_id}, paywall={is_paywall}) доставлено: 200 OK")
+                    logger.info(f"Уведомление прорабу (chat_id={admin_chat_id}, locked={not can_view_full}) доставлено: 200 OK")
                 else:
                     logger.warning(
                         f"Ошибка отправки с кнопками ({res.status_code}: {res.text}), отправляем fallback без кнопок..."
                     )
                     plain_text = (
                         f"🚨 НОВАЯ ЗАЯВКА НА ЗАМЕР!\n"
-                        f"Клиент: {lead.name if not is_paywall else mask_client_name(lead.name)}\n"
-                        f"Телефон: {lead.phone if not is_paywall else mask_client_phone(lead.phone)}\n"
+                        f"Клиент: {lead.name if can_view_full else mask_client_name(lead.name)}\n"
+                        f"Телефон: {lead.phone if can_view_full else mask_client_phone(lead.phone)}\n"
+                        f"Адрес: {lead.address if can_view_full else mask_address(lead.address)}\n"
                         f"Связь: {channel_name}\n"
                         f"Желаемая дата: {lead.preferred_date}\n"
                         f"Объект: {housing_type}, {lead.area} м², {lead.renovation_class}\n"
-                        f"Оценка стоимости: от {min_cost} до {max_cost} руб."
+                        f"Смета: {total_cost_str} руб."
                     )
                     fb_res = await client.post(
                         f"https://api.telegram.org/bot{bot_token}/sendMessage",
@@ -1475,7 +1492,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     return {
         "success": True,
         "lead_id": lead_id,
-        "is_paywall": is_paywall,
+        "is_locked": not can_view_full,
         "message": "Заявка успешно зарегистрирована",
     }
 

@@ -289,6 +289,7 @@ export async function createLead(payload: LeadPayload): Promise<{
             client_name: payload.name,
             client_phone: payload.phone,
             contact_channel: payload.communication || 'telegram',
+            address: payload.address || null,
             preferred_date: payload.preferred_date,
             housing_type: payload.property_type === 'new' ? 'Новостройка' : 'Вторичка',
             repair_type: payload.renovation_class,

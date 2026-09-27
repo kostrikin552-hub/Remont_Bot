@@ -1,8 +1,9 @@
 import os
-from dotenv import load_dotenv
-
-# Загружаем переменные из .env файла
-load_dotenv()
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except ImportError:
+    pass
 
 
 def normalize_url(url: str, default: str) -> str:

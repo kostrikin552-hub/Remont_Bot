@@ -38,6 +38,7 @@ export interface CalculationResult {
 export interface BookingFormState {
   name: string;
   phone: string;
+  address: string;
   date: string;
   communication: 'telegram' | 'call' | 'whatsapp';
   comment: string;
@@ -79,6 +80,7 @@ export interface LeadPayload {
   active_options: string[];
   preferred_date: string;
   communication: string;
+  address?: string;
   comment?: string;
   agreement_152fz: boolean;
 }

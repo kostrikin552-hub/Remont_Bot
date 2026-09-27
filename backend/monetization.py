@@ -1,9 +1,17 @@
 """
 Модуль монетизации и управления подписками для строительных компаний.
-Правила монетизации:
-1. Без триала (0 бесплатных заявок). Бот работает только при оплаченной подписке.
-2. Если подписка истекла — бот компании полностью останавливает работу и приём заявок.
-3. 3 тарифных плана: 1 месяц (30 дней), 3 месяца (90 дней) и 1 год (365 дней).
+
+Продуктовая механика: Usage-Based Freemium с механизмом замаскированного лида (Masked Lead / Soft Paywall).
+1. ТРИАЛ: 3 первые заявки передаются прорабу БЕСПЛАТНО и в ПОЛНОМ ОБЪЁМЕ (Aha-Moment).
+   Прораб видит имя, прямой телефон, адрес, канал связи и детальную смету.
+2. ЗАЯВКА 4 И ДАЛЕЕ (если подписка не оплачена):
+   - Клиент (B2C) в Mini App НЕ видит ошибок и получает полноценный экран успеха.
+   - Заявка сохраняется в Supabase со статусом 'locked'.
+   - Прораб получает в Telegram «замаскированную» карточку:
+     телефон: +7 (999) ***-**-42, адрес скрыт, но сумма сметы видна полностью!
+   - Кнопка разблокировки: «🔓 Разблокировать клиента за 2 990 ₽/мес».
+3. ПРИ ОПЛАТЕ ПОДПИСКИ:
+   - Все скрытые заявки мгновенно разблокируются и высылаются прорабу с открытыми контактами.
 """
 
 import json
@@ -14,7 +22,10 @@ import uuid
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-import httpx
+try:
+    import httpx
+except ImportError:
+    httpx = None
 
 try:
     from backend.config import (
@@ -72,12 +83,12 @@ SUBSCRIPTION_PLANS: Dict[str, Dict[str, Any]] = {
 
 DEFAULT_PLAN_ID: str = "1m"
 SUBSCRIPTION_PRICE: int = SUBSCRIPTION_PLANS["1m"]["price"]
-TRIAL_LEADS_COUNT: int = 0  # Триала нет! 0 бесплатных заявок
+TRIAL_LEADS_COUNT: int = 3  # 3 бесплатные заявки в рамках Usage-Based Freemium!
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 SUBS_FILE = os.path.join(DATA_DIR, "subscriptions.json")
 
-# In-memory кэш подписок
+# In-memory кэш подписок и использованных триал-лидов
 SUBSCRIPTIONS_CACHE: Dict[str, Dict[str, Any]] = {}
 
 
@@ -112,7 +123,7 @@ def load_local_subscriptions():
     if "remont-pro" not in SUBSCRIPTIONS_CACHE:
         demo_until = datetime.now(timezone.utc) + timedelta(days=365)
         SUBSCRIPTIONS_CACHE["remont-pro"] = {
-            "trial_leads_left": 0,
+            "trial_leads_used": 0,
             "subscription_status": "active",
             "subscription_until": demo_until.isoformat(),
             "plan_id": "1y",
@@ -147,13 +158,15 @@ def get_company_subscription(
     company_identifier: str, company: Optional[Dict[str, Any]] = None, supabase_client: Any = None
 ) -> Dict[str, Any]:
     """
-    Возвращает актуальное состояние подписки компании:
-    - is_active: bool (True если подписка активна и срок не истек)
-    - subscription_status: 'active' | 'expired'
+    Возвращает актуальное состояние подписки и триала компании:
+    - is_active: bool (True если подписка оплачена и активна)
+    - subscription_status: 'trial' | 'active' | 'expired'
     - subscription_until: datetime или None
-    - days_left: int (количество оставшихся дней)
+    - days_left: int
     - plan_id: str
-    - trial_leads_left: 0 (триала нет)
+    - trial_leads_used: int (количество использованных заявок из 3)
+    - trial_leads_left: int (сколько бесплатных заявок осталось)
+    - can_receive_unmasked: bool (True если подписка активна или действует триал)
     """
     key = str(company_identifier).lower()
     comp_uuid = None
@@ -161,12 +174,14 @@ def get_company_subscription(
         comp_uuid = str(company.get("uuid") or company.get("id") or "").lower()
 
     sub_data: Dict[str, Any] = {
-        "trial_leads_left": 0,
-        "subscription_status": "expired",
+        "trial_leads_used": 0,
+        "trial_leads_left": TRIAL_LEADS_COUNT,
+        "subscription_status": "trial",
         "subscription_until": None,
         "plan_id": "1m",
         "is_active": False,
         "days_left": 0,
+        "can_receive_unmasked": True,
     }
 
     # 1. Проверяем в объекте компании (если Supabase вернул эти поля)
@@ -177,6 +192,8 @@ def get_company_subscription(
             sub_data["subscription_until"] = parse_iso_datetime(company["subscription_until"])
         if "plan_id" in company and company["plan_id"]:
             sub_data["plan_id"] = company["plan_id"]
+        if "trial_leads_used" in company and company["trial_leads_used"] is not None:
+            sub_data["trial_leads_used"] = int(company["trial_leads_used"])
 
     # 2. Проверяем локальный кэш
     for search_key in (key, comp_uuid):
@@ -188,9 +205,11 @@ def get_company_subscription(
                 sub_data["subscription_until"] = parse_iso_datetime(cached["subscription_until"])
             if "plan_id" in cached:
                 sub_data["plan_id"] = cached["plan_id"]
+            if "trial_leads_used" in cached:
+                sub_data["trial_leads_used"] = max(sub_data["trial_leads_used"], int(cached["trial_leads_used"]))
             break
 
-    # 3. Валидируем активность по дате
+    # 3. Валидируем активность платной подписки по дате
     now = datetime.now(timezone.utc)
     until = sub_data.get("subscription_until")
     if until:
@@ -201,16 +220,99 @@ def get_company_subscription(
             sub_data["is_active"] = True
             delta = until - now
             sub_data["days_left"] = max(1, delta.days)
-        else:
-            sub_data["subscription_status"] = "expired"
-            sub_data["is_active"] = False
-            sub_data["days_left"] = 0
+            sub_data["can_receive_unmasked"] = True
+            return sub_data
+
+    # 4. Если платной подписки нет — смотрим статус триала (3 заявки)
+    sub_data["is_active"] = False
+    sub_data["days_left"] = 0
+    trial_used = sub_data["trial_leads_used"]
+    trial_left = max(0, TRIAL_LEADS_COUNT - trial_used)
+    sub_data["trial_leads_left"] = trial_left
+
+    if trial_used < TRIAL_LEADS_COUNT:
+        sub_data["subscription_status"] = "trial"
+        sub_data["can_receive_unmasked"] = True
     else:
         sub_data["subscription_status"] = "expired"
-        sub_data["is_active"] = False
-        sub_data["days_left"] = 0
+        sub_data["can_receive_unmasked"] = False
 
     return sub_data
+
+
+def check_and_consume_lead_access(
+    company_identifier: str,
+    company: Optional[Dict[str, Any]] = None,
+    supabase_client: Any = None,
+) -> Dict[str, Any]:
+    """
+    Проверяет права на получение полной заявки:
+    - Если подписка активна -> full access
+    - Если триал не исчерпан (заявки 1, 2, 3) -> full access + инкрементирует счётчик триала
+    - Если триал исчерпан и нет оплаты -> masked access (Soft Paywall)
+    """
+    key = str(company_identifier).lower()
+    comp_uuid = None
+    if company:
+        comp_uuid = str(company.get("uuid") or company.get("id") or "").lower()
+
+    sub_info = get_company_subscription(company_identifier, company, supabase_client)
+
+    # Вариант А: Оплаченная подписка активна
+    if sub_info.get("is_active"):
+        return {
+            "can_view_full": True,
+            "is_paid": True,
+            "is_trial": False,
+            "lead_status": "new",
+            "trial_num": 0,
+            "trial_left": 0,
+            "subscription_until": sub_info.get("subscription_until"),
+        }
+
+    # Вариант Б: Бесплатный триал (1, 2 или 3 заявка)
+    trial_used = sub_info.get("trial_leads_used", 0)
+    if trial_used < TRIAL_LEADS_COUNT:
+        new_used = trial_used + 1
+        new_left = TRIAL_LEADS_COUNT - new_used
+
+        # Обновляем кэш
+        if key not in SUBSCRIPTIONS_CACHE:
+            SUBSCRIPTIONS_CACHE[key] = {}
+        SUBSCRIPTIONS_CACHE[key]["trial_leads_used"] = new_used
+        if comp_uuid:
+            if comp_uuid not in SUBSCRIPTIONS_CACHE:
+                SUBSCRIPTIONS_CACHE[comp_uuid] = {}
+            SUBSCRIPTIONS_CACHE[comp_uuid]["trial_leads_used"] = new_used
+        save_local_subscriptions()
+
+        # Обновляем в Supabase
+        if supabase_client and comp_uuid:
+            try:
+                supabase_client.table("companies").update({"trial_leads_used": new_used}).eq("id", comp_uuid).execute()
+            except Exception as e:
+                logger.debug(f"Не удалось обновить trial_leads_used в Supabase: {e}")
+
+        return {
+            "can_view_full": True,
+            "is_paid": False,
+            "is_trial": True,
+            "trial_num": new_used,
+            "trial_left": new_left,
+            "lead_status": "new",
+            "subscription_until": None,
+        }
+
+    # Вариант В: Триал исчерпан, подписка не оплачена -> Замаскированный лид (Soft Paywall)
+    return {
+        "can_view_full": False,
+        "is_paid": False,
+        "is_trial": False,
+        "trial_num": trial_used,
+        "trial_left": 0,
+        "lead_status": "locked",
+        "subscription_until": None,
+    }
 
 
 def save_company_subscription(
@@ -223,8 +325,9 @@ def save_company_subscription(
     Сохраняет данные подписки в локальный кэш и синхронизирует с Supabase.
     """
     key = str(company_identifier).lower()
+    existing = SUBSCRIPTIONS_CACHE.get(key, {})
     serialized = {
-        "trial_leads_left": 0,
+        "trial_leads_used": sub_data.get("trial_leads_used", existing.get("trial_leads_used", 0)),
         "subscription_status": sub_data.get("subscription_status", "expired"),
         "subscription_until": (
             sub_data["subscription_until"].isoformat()
@@ -239,11 +342,10 @@ def save_company_subscription(
         SUBSCRIPTIONS_CACHE[str(company_uuid).lower()] = serialized
     save_local_subscriptions()
 
-    # Синхронизация с Supabase (если в таблице companies есть соответствующие колонки)
+    # Синхронизация с Supabase
     if supabase_client and company_uuid:
         try:
             update_payload = {
-                "trial_leads_left": 0,
                 "subscription_status": serialized["subscription_status"],
                 "subscription_until": serialized["subscription_until"],
             }
@@ -253,28 +355,52 @@ def save_company_subscription(
 
 
 def mask_client_name(name: str) -> str:
-    """Маскирует имя клиента: Алексей -> Алек***"""
+    """Маскирует имя клиента: Алексей -> Алек***, Иван Иванов -> Иван И.***"""
     name = (name or "").strip()
     if not name:
         return "Клиент"
+    parts = name.split()
+    if len(parts) >= 2:
+        return f"{parts[0]} {parts[1][0]}.***"
     if len(name) <= 3:
         return name[0] + "***"
     return name[:3] + "***"
 
 
 def mask_client_phone(phone: str) -> str:
-    """Маскирует номер телефона: +7 999 123-45-89 -> +7 999 ***-**-89"""
-    clean = re.sub(r"[^\d+]", "", phone)
+    """Маскирует номер телефона строго по формату: +7 (999) ***-**-42"""
+    clean = re.sub(r"[^\d]", "", phone or "")
     if clean.startswith("8") and len(clean) == 11:
-        clean = "+7" + clean[1:]
-    elif not clean.startswith("+") and len(clean) >= 10:
-        clean = "+" + clean
+        clean = "7" + clean[1:]
+    elif len(clean) == 10:
+        clean = "7" + clean
 
-    if len(clean) >= 10:
-        prefix = clean[:6]  # например +7 999
-        suffix = clean[-2:]  # например 89
-        return f"{prefix} ***-**-{suffix}"
-    return "+7 *** ***-**-**"
+    if len(clean) == 11 and clean.startswith("7"):
+        code = clean[1:4]
+        suffix = clean[-2:]
+        return f"+7 ({code}) ***-**-{suffix}"
+    elif len(clean) >= 6:
+        return f"+{clean[:3]} ***-**-{clean[-2:]}"
+    return "+7 (999) ***-**-**"
+
+
+def mask_address(address: Optional[str]) -> str:
+    """Маскирует точный адрес, сохраняя город/ЖК для понимания локации объекта"""
+    addr = (address or "").strip()
+    if not addr:
+        return "г. Москва, [адрес скрыт]"
+
+    match_jk = re.search(r"(ЖК\s+[«\"]?[^,\"]+[»\"]?)", addr, re.IGNORECASE)
+    if match_jk:
+        jk = match_jk.group(1).strip()
+        return f"{jk}, кв. ** (скрыто)"
+
+    parts = [p.strip() for p in addr.split(",") if p.strip()]
+    if len(parts) >= 2:
+        return f"{parts[0]}, {parts[1][:5]}*** [дом/квартира скрыты]"
+    elif len(parts) == 1:
+        return f"{parts[0][:8]}*** [адрес скрыт]"
+    return "*** [адрес скрыт]"
 
 
 def create_payment_url(
@@ -283,13 +409,12 @@ def create_payment_url(
     """
     Генерирует ссылку на оплату выбранного тарифа (1 месяц, 3 месяца, 1 год).
     Если задан ЮKassa Secret Key — создает платёж через API ЮKassa.
-    В противном случае — создает защищенную тестовую страницу оплаты.
+    В противном случае — создает защищенную страницу оплаты.
     """
     plan = get_plan(plan_id)
     payment_id = f"pay_{uuid.uuid4().hex[:16]}"
     secret_key = os.getenv("YOOKASSA_SECRET_KEY", "").strip()
 
-    # Если есть реальный секретный ключ ЮKassa
     if secret_key and YOOKASSA_SHOP_ID:
         try:
             yoo_url = "https://api.yookassa.ru/v3/payments"
@@ -326,7 +451,7 @@ def create_payment_url(
         except Exception as e:
             logger.error(f"Ошибка создания платежа в ЮKassa: {e}")
 
-    # Fallback: встроенная защищенная страница оплаты с выбором тарифа
+    # Fallback: защищенная внутренняя страница оплаты
     checkout_url = (
         f"{BASE_WEBHOOK_URL}/pay/{payment_id}?"
         f"company_id={company_id}&admin_chat_id={admin_chat_id}&plan={plan['id']}"
@@ -345,8 +470,7 @@ async def activate_subscription_for_company(
 ) -> Dict[str, Any]:
     """
     Активирует или продлевает подписку на выбранный период (30, 90 или 365 дней),
-    возобновляет работу остановленного бота, поздравляет прораба в Telegram
-    и мгновенно разблокирует все скрытые лиды!
+    поздравляет прораба в Telegram и мгновенно РАЗБЛОКИРУЕТ ВСЕ СКРЫТЫЕ ЛИДЫ (locked -> unlocked)!
     """
     plan = get_plan(plan_id) if plan_id else None
     if days is None:
@@ -354,7 +478,6 @@ async def activate_subscription_for_company(
     actual_plan_id = plan_id or ("1y" if days >= 365 else ("3m" if days >= 90 else "1m"))
     plan_info = get_plan(actual_plan_id)
 
-    # Проверяем текущее окончание: если еще действует, продлеваем от него
     current_sub = get_company_subscription(company_id, supabase_client=supabase_client)
     now = datetime.now(timezone.utc)
     current_until = current_sub.get("subscription_until")
@@ -367,14 +490,13 @@ async def activate_subscription_for_company(
         new_until = now + timedelta(days=days)
 
     sub_data = {
-        "trial_leads_left": 0,
+        "trial_leads_used": current_sub.get("trial_leads_used", TRIAL_LEADS_COUNT),
         "subscription_status": "active",
         "subscription_until": new_until,
         "plan_id": actual_plan_id,
         "is_active": True,
     }
 
-    # Находим компанию для получения UUID, названия и токена бота
     comp_uuid = None
     company_name = "Ваша компания"
     if supabase_client:
@@ -405,11 +527,10 @@ async def activate_subscription_for_company(
         f"🏢 <b>Компания:</b> {company_name}\n"
         f"📦 <b>Тариф:</b> {plan_info['label']}\n"
         f"📅 <b>Срок действия:</b> до {until_str}\n"
-        "🚀 <b>Статус бота:</b> РАБОТАЕТ (приём заявок активен)\n\n"
-        "Спасибо за оплату! Все клиенты с калькулятора поступают вам моментально и в полном объёме."
+        "🚀 <b>Статус:</b> ПОЛНЫЙ ДОСТУП (безлимитный приём заявок с открытыми контактами)\n\n"
+        "Спасибо за оплату! Все новые клиенты будут поступать вам моментально с полными номерами телефонов."
     )
 
-    # 1. Отправляем поздравление в Telegram прорабу
     target_token = bot_token or MASTER_BOT_TOKEN
     target_chat = admin_chat_id
     if target_token and target_chat:
@@ -426,7 +547,7 @@ async def activate_subscription_for_company(
         except Exception as e:
             logger.error(f"Не удалось отправить поздравление прорабу: {e}")
 
-    # 2. Мгновенная разблокировка скрытых лидов (paywall_locked -> unlocked)
+    # МГНОВЕННАЯ РАЗБЛОКИРОВКА ВСЕХ ЗАБЛОКИРОВАННЫХ ЛИДОВ (locked / paywall_locked)
     unlocked_count = 0
     if supabase_client and comp_uuid:
         try:
@@ -434,7 +555,7 @@ async def activate_subscription_for_company(
                 supabase_client.table("leads")
                 .select("*")
                 .eq("company_id", comp_uuid)
-                .eq("status", "paywall_locked")
+                .in_("status", ["locked", "paywall_locked"])
                 .execute()
             )
             locked_leads = locked_leads_res.data or []
@@ -442,30 +563,32 @@ async def activate_subscription_for_company(
             if locked_leads:
                 for lead in locked_leads:
                     lead_id = lead.get("id")
-                    # Обновляем статус в базе
                     supabase_client.table("leads").update({"status": "unlocked"}).eq("id", lead_id).execute()
 
-                    # Отправляем полную карточку прорабу
-                    client_name = lead.get("client_name") or "Клиент"
-                    client_phone = lead.get("client_phone") or ""
+                    client_name = lead.get("client_name") or lead.get("name") or "Клиент"
+                    client_phone = lead.get("client_phone") or lead.get("phone") or ""
                     clean_phone = re.sub(r"[^0-9+]", "", client_phone)
                     digits = re.sub(r"[^0-9]", "", clean_phone)
+                    client_address = lead.get("address") or "Не указан"
 
-                    min_c = lead.get("min_cost", 0) or 0
-                    max_c = lead.get("max_cost", 0) or 0
+                    min_c = lead.get("min_cost") or lead.get("price_min", 0) or 0
+                    max_c = lead.get("max_cost") or lead.get("price_max", 0) or 0
+                    tot_c = lead.get("total_base_cost") or max_c or min_c
+                    tot_formatted = f"{tot_c:,.0f}".replace(",", " ")
 
                     card_text = (
-                        "🔓 <b>РАЗБЛОКИРОВАННАЯ ЗАЯВКА:</b>\n"
+                        "🔓 <b>РАЗБЛОКИРОВАННЫЙ КЛИЕНТ!</b>\n"
                         "━━━━━━━━━━━━━━━━━━\n"
                         f"👤 <b>Клиент:</b> {client_name}\n"
                         f"📱 <b>Телефон:</b> <code>{client_phone}</code>\n"
-                        f"💬 <b>Канал связи:</b> {lead.get('contact_channel', 'Telegram')}\n"
+                        f"📍 <b>Адрес:</b> {client_address}\n"
+                        f"💬 <b>Связь:</b> {lead.get('contact_channel') or lead.get('communication') or 'Telegram'}\n"
                         f"📅 <b>Дата:</b> {lead.get('preferred_date', 'Не указана')}\n\n"
-                        f"🏠 <b>Объект:</b> {lead.get('housing_type', 'Квартира')}, {lead.get('area_m2', 0)} м², {lead.get('repair_type', '')}\n"
-                        f"💰 <b>Смета:</b> от {min_c:,.0f} до {max_c:,.0f} ₽\n"
+                        f"🏠 <b>Объект:</b> {lead.get('housing_type', 'Квартира')}, {lead.get('area_m2') or lead.get('area', 0)} м², {lead.get('repair_type') or lead.get('renovation_class', '')}\n"
+                        f"💰 <b>Смета:</b> <b>{tot_formatted} ₽</b>\n"
                         "━━━━━━━━━━━━━━━━━━\n"
-                        "✅ <i>Контакты открыты после оплаты подписки! Бот снова в строю.</i>"
-                    ).replace(",", " ")
+                        "✅ <i>Контакты открыты после оплаты подписки! Вы можете связаться с клиентом прямо сейчас.</i>"
+                    )
 
                     ik = []
                     if digits:
