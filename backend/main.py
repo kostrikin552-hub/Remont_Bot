@@ -68,18 +68,22 @@ except ImportError:
 try:
     from backend.config import (
         BASE_WEBHOOK_URL,
+        BOTFATHER_GUIDE_VIDEO_ID,
         MASTER_BOT_TOKEN,
         MINI_APP_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         SUPABASE_URL,
+        SUPPORT_TELEGRAM_URL,
     )
 except ImportError:
     from config import (
         BASE_WEBHOOK_URL,
+        BOTFATHER_GUIDE_VIDEO_ID,
         MASTER_BOT_TOKEN,
         MINI_APP_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         SUPABASE_URL,
+        SUPPORT_TELEGRAM_URL,
     )
 
 # ---------------------------------------------------------------------------
@@ -254,6 +258,30 @@ def get_subscription_keyboard(comp_id: str, comp_name: str, chat_id: int) -> Inl
             [InlineKeyboardButton(text="💳 1 месяц — 2 990 ₽", url=url_1m)],
             [InlineKeyboardButton(text="🔥 3 месяца — 7 990 ₽ (-11%)", url=url_3m)],
             [InlineKeyboardButton(text="💎 1 год — 24 990 ₽ (-30%)", url=url_1y)],
+        ]
+    )
+
+
+# Регулярное выражение токена Telegram бота: 8-12 цифр, двоеточие, 35 символов ключа
+TOKEN_REGEX = r"([0-9]{8,12}:[a-zA-Z0-9_-]{35})"
+
+
+def get_botfather_guide_keyboard() -> InlineKeyboardMarkup:
+    """Инлайн-кнопки для шага создания бота: прямая ссылка на @BotFather и связь с поддержкой"""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🤖 Открыть @BotFather",
+                    url="https://t.me/BotFather",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Помощь специалиста",
+                    url=SUPPORT_TELEGRAM_URL,
+                )
+            ],
         ]
     )
 
@@ -478,7 +506,7 @@ async def master_process_name(message: Message, state: FSMContext):
 
 @master_router.message(StateFilter(RegisterCompanyFSM.city), F.text)
 async def master_process_city(message: Message, state: FSMContext):
-    """Шаг 2: получение города"""
+    """Шаг 2: получение города и переход к привязке токена бота с видеоинструкцией и Deep-Link"""
     city = message.text.strip()
     if len(city) < 2:
         await message.answer("Пожалуйста, введите название города:")
@@ -487,24 +515,85 @@ async def master_process_city(message: Message, state: FSMContext):
     await state.update_data(city=city)
     await state.set_state(RegisterCompanyFSM.bot_token)
 
-    guide_text = (
-        "📍 <b>Шаг 3 из 3:</b> Отправьте токен вашего Telegram-бота от <b>@BotFather</b>.\n\n"
-        "📖 <b>Как получить токен за 1 минуту:</b>\n"
-        "1. Перейдите в диалог с официальным ботом <b>@BotFather</b>\n"
-        "2. Отправьте команду <code>/newbot</code>\n"
-        "3. Введите название бота (например: <i>Ремонт от Алексея</i>)\n"
-        "4. Введите юзернейм на английском, оканчивающийся на <code>bot</code> (например: <i>alex_remont_bot</i>)\n"
-        "5. Скопируйте полученный HTTP API токен и пришлите его сюда сообщением."
+    data = await state.get_data()
+    company_name = data.get("company_name", "Ремонт")
+    slug_suggestion = re.sub(r"[^a-zA-Z0-9_]", "", company_name.lower().replace(" ", "_")) or "my_remont"
+
+    keyboard = get_botfather_guide_keyboard()
+    caption_text = (
+        "🎬 <b>Посмотрите 30-секундное видео выше.</b>\n\n"
+        "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n\n"
+        "1. Перейдите в @BotFather по кнопке ниже.\n"
+        "2. Нажмите <b>Start</b> и отправьте команду <code>/newbot</code>.\n"
+        f"3. Введите название бота (например: <i>Ремонт Квартир {city}</i>).\n"
+        f"4. Введите юзернейм на латинице с окончанием на <code>bot</code> (например: <i>{slug_suggestion}_bot</i>).\n"
+        "5. Скопируйте длинный ключ (<b>HTTP API Token</b>) и отправьте его сюда.\n\n"
+        "💡 <i>Защита от ошибок:</i> вы можете скопировать всё сообщение от @BotFather целиком — система сама найдёт в нём токен!"
     )
-    await message.answer(guide_text)
+
+    # Отправка видеоинструкции (если задан file_id видео или video_note)
+    guide_video_id = BOTFATHER_GUIDE_VIDEO_ID or os.getenv("BOTFATHER_GUIDE_VIDEO_ID", "")
+    video_sent = False
+    if guide_video_id:
+        try:
+            await message.answer_video(
+                video=guide_video_id,
+                caption=caption_text,
+                reply_markup=keyboard,
+            )
+            video_sent = True
+        except Exception as e:
+            logger.warning(f"Не удалось отправить видео по file_id '{guide_video_id}': {e}")
+
+    if not video_sent:
+        fallback_text = (
+            "📍 <b>Шаг 3 из 3: Подключение вашего личного бота</b>\n\n"
+            "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n\n"
+            "1. Перейдите в официальный бот <b>@BotFather</b> по кнопке ниже.\n"
+            "2. Нажмите <b>Start</b> и отправьте команду <code>/newbot</code>.\n"
+            f"3. Введите название бота (например: <i>Ремонт Квартир {city}</i>).\n"
+            f"4. Введите юзернейм на латинице с окончанием на <code>bot</code> (например: <i>{slug_suggestion}_bot</i>).\n"
+            "5. Скопируйте полученный HTTP API токен и пришлите его сюда сообщением.\n\n"
+            "💡 <i>Подсказка:</i> вы можете просто переслать или скопировать целиком всё сообщение от @BotFather — система сама найдёт в нём токен!"
+        )
+        await message.answer(fallback_text, reply_markup=keyboard)
 
 
 @master_router.message(StateFilter(RegisterCompanyFSM.bot_token), F.text)
 async def master_process_token(message: Message, state: FSMContext):
-    """Шаг 3: валидация токена, создание компании, настройка WebApp кнопки и вебхука"""
-    token_candidate = message.text.strip()
+    """Шаг 3: валидация токена (Sanity Regex Parsing), создание компании, настройка WebApp кнопки и вебхука"""
+    user_input = message.text.strip() if message.text else ""
+    guide_kb = get_botfather_guide_keyboard()
 
-    # 1. Валидация токена через Telegram Bot API (getMe)
+    # 1. Попытка вычленить валидный токен через регулярное выражение (8-12 цифр + : + 35 символов)
+    token_match = re.search(TOKEN_REGEX, user_input)
+
+    if not token_match:
+        # Проверяем типовые ошибки пользователя
+        if "@" in user_input or "t.me/" in user_input or user_input.lower().endswith("bot"):
+            await message.answer(
+                "⚠️ <b>Вы прислали ссылку или юзернейм, а нужен секретный токен API.</b>\n\n"
+                "Токен выглядит примерно так:\n"
+                "<code>7123456789:AAHk1234567890abcdef1234567890abcde</code>\n\n"
+                "1. Зайдите в диалог с <b>@BotFather</b> (кнопка ниже).\n"
+                "2. Найдите сообщение от него со строкой <i>«Use this token to access the HTTP API:»</i>.\n"
+                "3. Скопируйте длинный ключ (или перешлите всё сообщение целиком сюда).",
+                reply_markup=guide_kb,
+            )
+            return
+        else:
+            await message.answer(
+                "❌ <b>Не удалось распознать токен бота.</b>\n\n"
+                "Токен Telegram-бота состоит из цифр, двоеточия и 35 символов ключа:\n"
+                "<code>7123456789:AAHk1234567890abcdef1234567890abcde</code>\n\n"
+                "Пожалуйста, скопируйте и пришлите сообщение от @BotFather целиком или посмотрите короткую инструкцию выше 👆",
+                reply_markup=guide_kb,
+            )
+            return
+
+    token_candidate = token_match.group(1).strip()
+
+    # 2. Валидация токена через Telegram Bot API (getMe)
     checking_msg = await message.answer("⏳ Проверяем токен бота...")
     bot_info: Optional[Dict[str, Any]] = None
 
@@ -520,7 +609,8 @@ async def master_process_token(message: Message, state: FSMContext):
     if not bot_info:
         await checking_msg.edit_text(
             "❌ <b>Токен недействителен</b> или бот не найден в Telegram.\n\n"
-            "Пожалуйста, перепроверьте токен в @BotFather и отправьте его снова:"
+            "Пожалуйста, перепроверьте токен в @BotFather (или создайте бота заново через <code>/newbot</code>) и отправьте токен снова:",
+            reply_markup=guide_kb,
         )
         return
 
@@ -657,6 +747,58 @@ async def master_process_token(message: Message, state: FSMContext):
         "<b>«Рассчитать стоимость»</b>, чтобы протестировать калькулятор!"
     )
     await checking_msg.edit_text(success_text)
+
+
+@master_router.message(StateFilter(RegisterCompanyFSM.bot_token))
+async def master_process_token_non_text(message: Message, state: FSMContext):
+    """Подсказка при отправке не-текстового сообщения (или парсинг токена из подписи к медиа)"""
+    caption = message.caption or ""
+    token_match = re.search(TOKEN_REGEX, caption)
+    if token_match:
+        message.text = token_match.group(1)
+        await master_process_token(message, state)
+        return
+
+    await message.answer(
+        "📝 Пожалуйста, отправьте текстовое сообщение с токеном или скопируйте текст сообщения из @BotFather целиком:",
+        reply_markup=get_botfather_guide_keyboard(),
+    )
+
+
+@master_router.message(Command("set_guide_video"))
+async def master_cmd_set_guide_video(message: Message):
+    """Позволяет администратору обновить file_id видеоинструкции BotFather прямо из Telegram"""
+    global BOTFATHER_GUIDE_VIDEO_ID
+    file_id = None
+    if message.video:
+        file_id = message.video.file_id
+    elif message.video_note:
+        file_id = message.video_note.file_id
+    elif message.reply_to_message:
+        if message.reply_to_message.video:
+            file_id = message.reply_to_message.video.file_id
+        elif message.reply_to_message.video_note:
+            file_id = message.reply_to_message.video_note.file_id
+
+    args = (message.text or "").split()[1:]
+    if not file_id and args:
+        file_id = args[0].strip()
+
+    if file_id:
+        BOTFATHER_GUIDE_VIDEO_ID = file_id
+        os.environ["BOTFATHER_GUIDE_VIDEO_ID"] = file_id
+        logger.info(f"Обновлен BOTFATHER_GUIDE_VIDEO_ID: {file_id}")
+        await message.answer(
+            f"✅ <b>Видеоинструкция успешно сохранена!</b>\n\n"
+            f"<code>file_id = \"{file_id}\"</code>\n\n"
+            "Теперь это видео будет автоматически отправляться новым прорабам на шаге привязки токена."
+        )
+    else:
+        await message.answer(
+            "📹 <b>Как установить видеоинструкцию:</b>\n"
+            "Отправьте видеоролик или видеосообщение с подписью <code>/set_guide_video</code> "
+            "или ответьте командой <code>/set_guide_video</code> на видео/кружочек."
+        )
 
 
 # ---------------------------------------------------------------------------

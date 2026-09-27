@@ -61,5 +61,11 @@ MINI_APP_URL: str = normalize_url(
     os.getenv("MINI_APP_URL", ""), "https://remont-backend-exr3.onrender.com"
 )
 
+# Видеоинструкция BotFather и контакты поддержки
+BOTFATHER_GUIDE_VIDEO_ID: str = os.getenv("BOTFATHER_GUIDE_VIDEO_ID", "").strip()
+SUPPORT_TELEGRAM_URL: str = os.getenv(
+    "SUPPORT_TELEGRAM_URL", "https://t.me/cuberlife"
+).strip()
+
 PORT: int = int(os.getenv("PORT", "10000"))
 HOST: str = os.getenv("HOST", "0.0.0.0")
