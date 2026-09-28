@@ -73,7 +73,6 @@ try:
         MINI_APP_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         SUPABASE_URL,
-        SUPPORT_TELEGRAM_URL,
     )
 except ImportError:
     from config import (
@@ -83,7 +82,6 @@ except ImportError:
         MINI_APP_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         SUPABASE_URL,
-        SUPPORT_TELEGRAM_URL,
     )
 
 # ---------------------------------------------------------------------------
@@ -267,19 +265,13 @@ TOKEN_REGEX = r"([0-9]{8,12}:[a-zA-Z0-9_-]{35})"
 
 
 def get_botfather_guide_keyboard() -> InlineKeyboardMarkup:
-    """Инлайн-кнопки для шага создания бота: прямая ссылка на @BotFather и связь с поддержкой"""
+    """Инлайн-кнопка для шага создания бота: прямая ссылка на @BotFather"""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="🤖 Открыть @BotFather",
                     url="https://t.me/BotFather",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="💬 Помощь специалиста",
-                    url=SUPPORT_TELEGRAM_URL,
                 )
             ],
         ]
