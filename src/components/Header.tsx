@@ -20,16 +20,16 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
           {company.logoLetter || company.name.charAt(0) || 'Р'}
         </div>
-        <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <h1 className="text-sm font-bold text-zinc-950 dark:text-white truncate leading-none">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <h1 className="text-sm font-bold text-zinc-950 dark:text-white leading-tight">
               {company.name}
             </h1>
             <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium shrink-0">
               · {company.city}
             </span>
           </div>
-          <p className="text-[11px] text-zinc-600 dark:text-zinc-300 font-medium leading-none mt-1">
+          <p className="text-[11px] text-zinc-600 dark:text-zinc-300 font-medium leading-tight mt-0.5">
             Калькулятор ремонта под ключ
           </p>
         </div>

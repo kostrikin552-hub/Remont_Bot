@@ -47,11 +47,11 @@ export const AdditionalOptions: React.FC<AdditionalOptionsProps> = ({
                     +{formatCurrency(option.pricePerMeter)}/м²
                   </span>
                 </div>
-                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 truncate">
+                <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug mt-0.5 break-words">
                   {option.subtitle}
                 </p>
                 {option.enabled && (
-                  <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 tabular-nums">
+                  <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 tabular-nums block mt-1">
                     Итого к смете: +{formatCurrency(totalOptionCost)}
                   </span>
                 )}

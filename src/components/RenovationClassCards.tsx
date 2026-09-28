@@ -52,13 +52,10 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
               }`}
             >
               <div>
-                <div className="flex items-center justify-between gap-1 mb-1">
-                  <span className="text-xs font-bold truncate">
-                    {item.title}
-                  </span>
-                  {item.popular && (
+                <div className="flex items-center justify-between mb-1 min-h-[14px]">
+                  {item.popular ? (
                     <span
-                      className={`text-[9px] font-bold px-1 rounded ${
+                      className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded leading-none ${
                         isSelected
                           ? 'bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-950'
                           : 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200'
@@ -66,9 +63,16 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
                     >
                       Хит
                     </span>
+                  ) : (
+                    <span className="text-[9px] font-medium opacity-50 leading-none">
+                      {item.badge || 'Тариф'}
+                    </span>
                   )}
                 </div>
-                <div className="text-[10px] opacity-75 line-clamp-1 leading-tight">
+                <h3 className="text-xs font-bold leading-tight break-words hyphens-auto">
+                  {item.title}
+                </h3>
+                <div className="text-[10px] opacity-75 leading-tight mt-0.5 break-words">
                   {item.id === 'cosmetic'
                     ? 'Косметика'
                     : item.id === 'capital'
@@ -114,11 +118,11 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
 
         {/* Expandable Features List */}
         {showDetails && (
-          <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80 grid grid-cols-2 gap-x-2 gap-y-1 text-[11px] text-zinc-700 dark:text-zinc-300 animate-in fade-in duration-150">
+          <div className="mt-2 pt-2 border-t border-zinc-100 dark:border-zinc-800/80 grid grid-cols-1 sm:grid-cols-2 gap-x-3 gap-y-1.5 text-[11px] text-zinc-700 dark:text-zinc-300 animate-in fade-in duration-150">
             {selectedClass.features.map((feature, idx) => (
               <div key={idx} className="flex items-start gap-1.5">
                 <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
-                <span className="truncate">{feature}</span>
+                <span className="leading-tight break-words">{feature}</span>
               </div>
             ))}
           </div>

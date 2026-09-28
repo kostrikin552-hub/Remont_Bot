@@ -247,7 +247,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
                         : `${group.items.length} поз.`}
                     </span>
                   </div>
-                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 truncate">
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-snug break-words">
                     {group.description}
                   </p>
                 </div>
@@ -378,26 +378,26 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 
       {/* 3. Grand Totals Summary Card - Matches Calculator dark theme */}
       <div className="bg-zinc-900 text-white dark:bg-zinc-800 dark:text-white rounded-xl p-3.5 shadow-xs space-y-2.5">
-        <div className="flex justify-between items-center text-xs text-zinc-300 pb-2 border-b border-zinc-700/80">
-          <span>Строительно-монтажные работы ({estimateData.activePositions} поз.):</span>
-          <span className="font-bold tabular-nums text-white">
+        <div className="flex justify-between items-center gap-2 text-xs text-zinc-300 pb-2 border-b border-zinc-700/80">
+          <span className="leading-snug">Строительно-монтажные работы ({estimateData.activePositions} поз.):</span>
+          <span className="font-bold tabular-nums text-white shrink-0">
             {formatCurrency(estimateData.worksTotal)}
           </span>
         </div>
 
         {estimateData.materialsTotal > 0 && (
-          <div className="flex justify-between items-center text-xs text-zinc-300 pb-2 border-b border-zinc-700/80">
-            <span>Черновые сертифицированные материалы:</span>
-            <span className="font-bold tabular-nums text-white">
+          <div className="flex justify-between items-center gap-2 text-xs text-zinc-300 pb-2 border-b border-zinc-700/80">
+            <span className="leading-snug">Черновые сертифицированные материалы:</span>
+            <span className="font-bold tabular-nums text-white shrink-0">
               +{formatCurrency(estimateData.materialsTotal)}
             </span>
           </div>
         )}
 
         {estimateData.savingsTotal > 0 && (
-          <div className="flex justify-between items-center text-xs text-emerald-400 pb-2 border-b border-zinc-700/80">
-            <span>Экономия (исключено {estimateData.excludedCount} поз.):</span>
-            <span className="font-bold tabular-nums text-emerald-400">
+          <div className="flex justify-between items-center gap-2 text-xs text-emerald-400 pb-2 border-b border-zinc-700/80">
+            <span className="leading-snug">Экономия (исключено {estimateData.excludedCount} поз.):</span>
+            <span className="font-bold tabular-nums text-emerald-400 shrink-0">
               -{formatCurrency(estimateData.savingsTotal)}
             </span>
           </div>
