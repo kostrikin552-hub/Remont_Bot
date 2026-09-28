@@ -17,6 +17,8 @@ import { AdditionalOptions } from './components/AdditionalOptions';
 import { StickyBottomBar } from './components/StickyBottomBar';
 import { DetailedEstimateSection } from './components/DetailedEstimateSection';
 import { BookingModal } from './components/BookingModal';
+import { ViralShareModal } from './components/ViralShareModal';
+import { CompetitorAuditModal } from './components/CompetitorAuditModal';
 import { AppSkeleton } from './components/AppSkeleton';
 import { initTelegramApp, triggerHaptic } from './utils/telegram';
 import {
@@ -30,7 +32,7 @@ import {
   DEMO_COMPANIES,
   DEFAULT_COMPANY_ID,
 } from './lib/supabase';
-import { ChevronDown } from 'lucide-react';
+import { ChevronDown, SearchCheck, ArrowRight } from 'lucide-react';
 
 const FAQ_ITEMS = [
   {
@@ -96,11 +98,41 @@ export default function App() {
 
   // Modals & UI
   const [isBookingOpen, setIsBookingOpen] = useState(false);
+  const [isShareOpen, setIsShareOpen] = useState(false);
+  const [isAuditOpen, setIsAuditOpen] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
-  // Initialize Telegram Mini App SDK
+  // Initialize Telegram Mini App SDK & parse viral deep links
   useEffect(() => {
     initTelegramApp();
+
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      const qArea = urlParams.get('area');
+      const qClass = urlParams.get('class');
+      const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
+
+      if (qArea) {
+        const parsedArea = parseInt(qArea, 10);
+        if (!isNaN(parsedArea) && parsedArea >= 20 && parsedArea <= 250) {
+          setArea(parsedArea);
+        }
+      }
+      if (qClass && ['cosmetic', 'capital', 'designer'].includes(qClass)) {
+        setSelectedClassId(qClass as RenovationClassId);
+      }
+
+      if (startParam) {
+        const parts = startParam.split('_');
+        if ((parts[0] === 'calc' || parts[0] === 'est' || parts[0] === 'estimate') && parts.length >= 3) {
+          const pArea = parseInt(parts[1], 10);
+          if (!isNaN(pArea) && pArea >= 20 && pArea <= 250) setArea(pArea);
+          if (['cosmetic', 'capital', 'designer'].includes(parts[2])) {
+            setSelectedClassId(parts[2] as RenovationClassId);
+          }
+        }
+      }
+    }
   }, []);
 
   // Fetch dynamic company & pricing rules on activeCompanyId change
@@ -355,6 +387,42 @@ export default function App() {
             onSelect={(id) => setSelectedClassId(id)}
           />
 
+          {/* Вирусная механика 4: Экспресс-аудит сметы конкурента («Троянский конь») */}
+          <div
+            id="competitor-audit-banner"
+            className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-xl p-3 border border-amber-200/80 dark:border-amber-800/50 shadow-xs flex items-center justify-between gap-3 no-print"
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                <SearchCheck className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-zinc-950 dark:text-white">
+                    Есть смета от другого прораба?
+                  </span>
+                  <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-sm bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                    Анти-развод
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
+                  Проверьте её на скрытые доплаты и переплату за 30 секунд
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('medium');
+                setIsAuditOpen(true);
+              }}
+              className="py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs shrink-0 transition shadow-xs flex items-center gap-1"
+            >
+              <span>Проверить</span>
+              <ArrowRight className="w-3 h-3" />
+            </button>
+          </div>
+
           {/* 4. Дополнительные опции */}
           <AdditionalOptions
             options={dynamicOptions}
@@ -375,6 +443,7 @@ export default function App() {
             onRestoreAllItems={handleRestoreAllItems}
             estimateData={estimateData}
             onOpenBooking={() => setIsBookingOpen(true)}
+            onOpenShare={() => setIsShareOpen(true)}
           />
 
           {/* 6. Стандарты качества */}
@@ -447,6 +516,7 @@ export default function App() {
         <StickyBottomBar
           result={calculation}
           onOpenBooking={() => setIsBookingOpen(true)}
+          onOpenShare={() => setIsShareOpen(true)}
         />
 
         {/* Booking Modal */}
@@ -457,6 +527,31 @@ export default function App() {
             onClose={() => setIsBookingOpen(false)}
           />
         )}
+
+        {/* Viral Share Modal (Механики 1 и 3) */}
+        <ViralShareModal
+          isOpen={isShareOpen}
+          onClose={() => setIsShareOpen(false)}
+          company={company}
+          result={calculation}
+          selectedClass={calculation.renovationClass}
+          savings={estimateData.savingsTotal}
+        />
+
+        {/* Competitor Audit Modal (Механика 4) */}
+        <CompetitorAuditModal
+          isOpen={isAuditOpen}
+          initialArea={area}
+          onClose={() => setIsAuditOpen(false)}
+          onApplyHonestEstimate={(newArea, newClass) => {
+            setArea(newArea);
+            setSelectedClassId(newClass);
+            setTimeout(() => {
+              const el = document.getElementById('estimate-breakdown');
+              if (el) el.scrollIntoView({ behavior: 'smooth' });
+            }, 100);
+          }}
+        />
       </div>
     </div>
   );

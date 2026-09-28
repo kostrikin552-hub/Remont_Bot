@@ -142,8 +142,24 @@ def get_price_categories_keyboard(company_id: Optional[str] = None) -> InlineKey
 # ---------------------------------------------------------------------------
 @router.message(CommandStart())
 async def cmd_start(message: Message, command: CommandObject, bot: Bot):
-    """Обработчик команды /start с установкой удобных кнопок"""
-    company_id = command.args.strip() if command.args else None
+    """Обработчик команды /start с поддержкой вирусных deep-link смет"""
+    arg = command.args.strip() if command.args else ""
+    company_id = None
+    is_shared = False
+    shared_area = 54
+    shared_class = "capital"
+
+    if arg.startswith("calc_") or arg.startswith("est_") or arg.startswith("estimate_"):
+        parts = arg.split("_")
+        if len(parts) >= 3:
+            is_shared = True
+            try:
+                shared_area = int(parts[1])
+                shared_class = parts[2]
+            except Exception:
+                pass
+    elif arg:
+        company_id = arg
 
     # Настраиваем кнопку меню чата для быстрого открытия WebApp
     try:
@@ -157,6 +173,45 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
         )
     except Exception as e:
         logger.warning(f"Не удалось установить MenuButtonWebApp: {e}")
+
+    if is_shared:
+        tariff_names = {
+            "cosmetic": "Косметический",
+            "capital": "Капитальный (ГОСТ)",
+            "designer": "Дизайнерский",
+        }
+        t_name = tariff_names.get(shared_class, "Капитальный")
+        deep_app_url = f"{get_webapp_url(company_id)}&area={shared_area}&class={shared_class}&utm_source=shared_tma"
+
+        share_greeting = (
+            f"Здравствуйте, {message.from_user.first_name}!\n\n"
+            f"👨‍👩‍👧 <b>Вам отправлена интерактивная смета ремонта на согласование:</b>\n"
+            f"📐 Площадь: <b>{shared_area} м²</b> (тариф «{t_name}»)\n"
+            "⚡️ Все расценки рассчитаны по стандарту ГОСТ с поэтапной оплатой без предоплаты.\n\n"
+            "Нажмите кнопку ниже, чтобы открыть живую интерактивную смету и посмотреть детализацию работ:"
+        )
+        share_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text=f"📱 Открыть смету ({shared_area} м²)",
+                        web_app=WebAppInfo(url=deep_app_url),
+                    )
+                ],
+                [
+                    InlineKeyboardButton(
+                        text="📐 Вызвать инженера-замерщика 0 ₽",
+                        callback_data="btn_booking",
+                    )
+                ],
+            ]
+        )
+        await message.answer(
+            text=share_greeting,
+            reply_markup=share_kb,
+            parse_mode=ParseMode.HTML,
+        )
+        return
 
     greeting = (
         f"Здравствуйте, {message.from_user.first_name}!\n\n"

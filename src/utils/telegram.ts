@@ -92,3 +92,67 @@ export function formatCurrency(value: number): string {
     maximumFractionDigits: 0,
   }).format(Math.round(value)) + ' ₽';
 }
+
+/**
+ * Открывает нативный диалог выбора чата Telegram для отправки сообщения с ссылкой.
+ * Использует openTelegramLink c tg:// или https://t.me/share/url
+ */
+export function openTelegramShare(url: string, text?: string): boolean {
+  triggerHaptic('medium');
+  const encodedUrl = encodeURIComponent(url);
+  const encodedText = text ? encodeURIComponent(text) : '';
+  const shareLink = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
+
+  try {
+    if (typeof window !== 'undefined' && window.Telegram?.WebApp?.openTelegramLink) {
+      window.Telegram.WebApp.openTelegramLink(shareLink);
+      return true;
+    }
+  } catch (err) {
+    console.warn('Failed to call WebApp.openTelegramLink:', err);
+  }
+
+  // Browser / WebView fallback
+  if (typeof window !== 'undefined') {
+    try {
+      const win = window.open(shareLink, '_blank');
+      if (win) return true;
+    } catch {
+      // ignore
+    }
+    window.location.href = shareLink;
+    return true;
+  }
+  return false;
+}
+
+/**
+ * Безопасное копирование текста в буфер обмена с fallback
+ */
+export async function copyTextToClipboard(text: string): Promise<boolean> {
+  triggerHaptic('light');
+  try {
+    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(text);
+      return true;
+    }
+  } catch {
+    // Fallback to textarea approach
+  }
+
+  try {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    const successful = document.execCommand('copy');
+    document.body.removeChild(textArea);
+    return successful;
+  } catch {
+    return false;
+  }
+}

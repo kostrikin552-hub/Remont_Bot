@@ -12,10 +12,11 @@ from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
 import httpx
+import urllib.parse
 from aiogram import Bot, Dispatcher, F, Router
 from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
-from aiogram.filters import Command, CommandStart, StateFilter
+from aiogram.filters import Command, CommandStart, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -246,7 +247,7 @@ def find_company_for_admin(admin_chat_id: int) -> Optional[Dict[str, Any]]:
 
 
 def get_subscription_keyboard(comp_id: str, comp_name: str, chat_id: int) -> InlineKeyboardMarkup:
-    """Генерирует клавиатуру с кнопками для 3-х тарифов подписки"""
+    """Генерирует клавиатуру с кнопками для 3-х тарифов подписки и реферальной программы"""
     _, url_1m = create_payment_url(comp_id, comp_name, chat_id, "1m")
     _, url_3m = create_payment_url(comp_id, comp_name, chat_id, "3m")
     _, url_1y = create_payment_url(comp_id, comp_name, chat_id, "1y")
@@ -256,6 +257,7 @@ def get_subscription_keyboard(comp_id: str, comp_name: str, chat_id: int) -> Inl
             [InlineKeyboardButton(text="💳 1 месяц — 2 990 ₽", url=url_1m)],
             [InlineKeyboardButton(text="🔥 3 месяца — 7 990 ₽ (-11%)", url=url_3m)],
             [InlineKeyboardButton(text="💎 1 год — 24 990 ₽ (-30%)", url=url_1y)],
+            [InlineKeyboardButton(text="🎁 Месяц за коллегу (Рефералка)", callback_data="btn_referral")],
         ]
     )
 
@@ -422,9 +424,16 @@ async def master_cmd_newbot(message: Message, state: FSMContext):
 
 
 @master_router.message(CommandStart())
-async def master_cmd_start(message: Message, state: FSMContext):
+async def master_cmd_start(message: Message, state: FSMContext, command: Optional[CommandObject] = None):
     """Приветствие прораба и меню управления ботом"""
     await state.clear()
+
+    # Проверяем реферальный код пригласившего коллеги (Механика 5)
+    referrer_id = None
+    if command and command.args and command.args.startswith("ref_"):
+        referrer_id = command.args.replace("ref_", "").strip()
+        await state.update_data(referred_by=referrer_id)
+
     existing_comp = find_company_for_admin(message.from_user.id)
     if existing_comp and existing_comp.get("bot_username"):
         uname = existing_comp.get("bot_username")
@@ -434,14 +443,15 @@ async def master_cmd_start(message: Message, state: FSMContext):
         until = sub_info.get("subscription_until")
 
         trial_used = sub_info.get("trial_leads_used", 0)
-        trial_left = max(0, 3 - trial_used)
+        total_trial = sub_info.get("total_trial_limit", 3)
+        trial_left = max(0, total_trial - trial_used)
         if is_active and until:
             until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
             status_desc = f"🟢 Активна (до {until_dt.strftime('%d.%m.%Y')})"
-        elif trial_used < 3:
-            status_desc = f"🎁 <b>Бесплатный триал:</b> {trial_used}/3 использовано (осталось {trial_left})"
+        elif trial_used < total_trial:
+            status_desc = f"🎁 <b>Бесплатный триал:</b> {trial_used}/{total_trial} использовано (осталось {trial_left})"
         else:
-            status_desc = "🔒 <b>Триал 3 заявок исчерпан</b> (новые контакты маскируются до оплаты)"
+            status_desc = f"🔒 <b>Триал {total_trial} заявок исчерпан</b> (новые контакты маскируются до оплаты)"
 
         welcome_back = (
             f"👋 <b>С возвращением, {cname}!</b>\n\n"
@@ -449,6 +459,7 @@ async def master_cmd_start(message: Message, state: FSMContext):
             f"📊 <b>Подписка:</b> {status_desc}\n\n"
             "<b>Доступные команды:</b>\n"
             "• /subscription — Кабинет подписки и выбор тарифов\n"
+            "• /ref — Партнёрская программа «Месяц за коллегу»\n"
             "• /pay — Оплатить подписку (1 месяц, 3 месяца или 1 год)\n"
             "• /newbot — Подключить ещё одного бота"
         )
@@ -456,8 +467,16 @@ async def master_cmd_start(message: Message, state: FSMContext):
         await message.answer(welcome_back, reply_markup=kb)
         return
 
+    ref_bonus_badge = ""
+    if referrer_id:
+        ref_bonus_badge = (
+            "🎁 <b>Вам начислен приветственный бонус:</b> +5 дополнительных заявок к стартовому триалу "
+            "(всего 8 клиентов вместо 3) за переход по приглашению коллеги!\n\n"
+        )
+
     welcome_text = (
         "👋 <b>Привет! Создадим персонального бота для ремонта за 2 минуты.</b>\n\n"
+        f"{ref_bonus_badge}"
         "С помощью этого бота ваши клиенты смогут мгновенно рассчитывать стоимость ремонта, "
         "а вы будете получать горячие заявки с контактами прямо в этот чат.\n\n"
         "📍 <b>Шаг 1 из 3:</b> Введите название вашей компании или бригады\n"
@@ -465,6 +484,60 @@ async def master_cmd_start(message: Message, state: FSMContext):
     )
     await message.answer(welcome_text)
     await state.set_state(RegisterCompanyFSM.company_name)
+
+
+@master_router.message(Command("ref"))
+@master_router.message(Command("referral"))
+@master_router.callback_query(F.data == "btn_referral")
+async def master_referral_info(event: Any):
+    """Механика 5: Двусторонняя B2B-рефералка «Месяц за коллегу»"""
+    msg = event.message if isinstance(event, CallbackQuery) else event
+    user_id = event.from_user.id
+
+    m_uname = "RemontMasterBot"
+    if master_bot:
+        try:
+            bot_info = await master_bot.get_me()
+            m_uname = bot_info.username or m_uname
+        except Exception:
+            pass
+
+    ref_link = f"https://t.me/{m_uname}?start=ref_{user_id}"
+    share_text = (
+        "Коллега, привет! Подключи себе персонального Telegram-бота для расчёта смет на ремонт: "
+        "он автоматически рассчитывает смету клиентам и выдаёт заявки. "
+        "По моей ссылке тебе дадут +5 дополнительных бесплатных заявок на старте (всего 8):"
+    )
+    share_url = f"https://t.me/share/url?url={urllib.parse.quote(ref_link)}&text={urllib.parse.quote(share_text)}"
+
+    existing_comp = find_company_for_admin(user_id)
+    ref_cnt = int(existing_comp.get("referral_count") or 0) if existing_comp else 0
+
+    text = (
+        "🎁 <b>Партнёрская программа «Месяц за коллегу» (Win-Win)</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        "Рекомендуйте сервис коллегам-строителям, отделочникам или прорабам и пользуйтесь платформой <b>бесплатно</b>!\n\n"
+        "🤝 <b>Что получает ваш коллега:</b>\n"
+        "• <b>+5 бесплатных заявок</b> к стартовому триалу (всего 8 полноценных лидов с открытыми телефонами вместо 3).\n\n"
+        "💰 <b>Что получаете вы:</b>\n"
+        "• <b>+1 месяц безлимитной подписки</b> (экономия 2 990 ₽) в подарок, как только приглашённый коллега оплатит свой первый месяц!\n\n"
+        f"📊 <b>Ваша статистика:</b>\n"
+        f"• Приглашено оплативших коллег: <b>{ref_cnt}</b>\n"
+        f"• Сэкономлено на подписке: <b>{ref_cnt * 2990} ₽</b>\n\n"
+        f"🔗 <b>Ваша персональная реферальная ссылка:</b>\n"
+        f"<code>{ref_link}</code>"
+    )
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📤 Отправить коллеге в Telegram", url=share_url)],
+            [InlineKeyboardButton(text="◀️ Назад в кабинет", callback_data="btn_sub")],
+        ]
+    )
+    if isinstance(event, CallbackQuery):
+        await event.message.edit_text(text, reply_markup=kb, parse_mode=ParseMode.HTML)
+        await event.answer()
+    else:
+        await msg.answer(text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
 @master_router.callback_query(F.data == "btn_sub")
@@ -611,6 +684,8 @@ async def master_process_token(message: Message, state: FSMContext):
     company_name = data.get("company_name", "Моя бригада")
     city = data.get("city", "Москва")
     admin_chat_id = message.from_user.id
+    referred_by = data.get("referred_by")
+    bonus_leads = 5 if referred_by else 0
 
     # Генерируем удобный slug на основе username бота
     clean_slug = re.sub(r"[^a-zA-Z0-9_-]", "", bot_username.lower())
@@ -637,6 +712,10 @@ async def master_process_token(message: Message, state: FSMContext):
                 "bot_username": bot_username.lower(),
                 "is_active": True,
             }
+            if referred_by:
+                company_row["referred_by"] = str(referred_by)
+                company_row["bonus_leads"] = bonus_leads
+
             if existing and existing.data:
                 company_uuid = str(existing.data.get("id"))
                 supabase_client.table("companies").update(company_row).eq("id", company_uuid).execute()
@@ -689,11 +768,42 @@ async def master_process_token(message: Message, state: FSMContext):
         "status_text": "Работаем без предоплаты",
         "badge_text": "PRO",
         "logo_letter": company_name[0].upper() if company_name else "Р",
+        "referred_by": referred_by,
+        "bonus_leads": bonus_leads,
     }
     COMPANIES_CACHE[company_id] = company_obj
     COMPANIES_CACHE[bot_username.lower()] = company_obj
     if company_uuid:
         COMPANIES_CACHE[company_uuid] = company_obj
+
+    if bonus_leads > 0:
+        if company_id not in SUBSCRIPTIONS_CACHE:
+            SUBSCRIPTIONS_CACHE[company_id] = {}
+        SUBSCRIPTIONS_CACHE[company_id]["bonus_leads"] = bonus_leads
+        if company_uuid:
+            if company_uuid not in SUBSCRIPTIONS_CACHE:
+                SUBSCRIPTIONS_CACHE[company_uuid] = {}
+            SUBSCRIPTIONS_CACHE[company_uuid]["bonus_leads"] = bonus_leads
+        save_local_subscriptions()
+
+    # Оповещаем пригласившего коллегу (Механика 5)
+    if referred_by and MASTER_BOT_TOKEN:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                ref_alert = (
+                    "🤝 <b>Новый коллега зарегистрировался по вашей ссылке!</b>\n"
+                    "━━━━━━━━━━━━━━━━━━━━\n"
+                    f"🏢 Компания: <b>{company_name}</b> (г. {city})\n"
+                    f"🤖 Бот коллеги: @{bot_username}\n"
+                    "🎁 Ему начислено <b>+5 бонусных заявок</b> к стартовому триалу (всего 8).\n\n"
+                    "Как только коллега оплатит первый месяц подписки, вам автоматически начислится <b>+1 месяц в подарок (2 990 ₽)</b>!"
+                )
+                await client.post(
+                    f"https://api.telegram.org/bot{MASTER_BOT_TOKEN}/sendMessage",
+                    json={"chat_id": referred_by, "text": ref_alert, "parse_mode": "HTML"},
+                )
+        except Exception as e:
+            logger.debug(f"Не удалось отправить уведомление рефереру: {e}")
 
     # 3. Настройка кнопки меню чата (setChatMenuButton)
     app_url = f"{MINI_APP_URL}?company_id={company_id}"
@@ -1409,6 +1519,103 @@ async def get_company_endpoint(company_id: str):
         "company": company,
         "pricing": pricing,
     }
+
+
+# ---------------------------------------------------------------------------
+# Экспорт сметы в HTML / PDF с вирусным бейджем: GET /api/estimate/export (Механика 2)
+# ---------------------------------------------------------------------------
+@app.get("/api/estimate/export", response_class=HTMLResponse)
+@app.get("/estimate/export", response_class=HTMLResponse)
+async def export_estimate_endpoint(
+    company_id: str = "remont-pro",
+    area: float = 54.0,
+    renovation_class: str = "capital",
+    property_type: str = "new",
+):
+    """
+    Генерирует официальный сметный документ по ГОСТ с вирусным бейджем
+    «Powered by Remont_Bot» для сохранения в PDF или отправки заказчику.
+    """
+    company = find_company(company_id) or {
+        "name": "РемонтПро",
+        "subtitle": "Калькулятор ремонта квартир под ключ",
+        "city": "Москва и МО",
+        "phone": "+7 (800) 555-35-35",
+    }
+
+    rates = {"cosmetic": 4500, "capital": 8500, "designer": 15000}
+    rate = rates.get(renovation_class, 8500)
+    coeff = 1.15 if property_type == "secondary" else 1.0
+    works_total = int(round(area * rate * coeff))
+    materials_total = int(round(area * 3500))
+    grand_total = works_total + materials_total
+
+    class_titles = {
+        "cosmetic": "Косметический ремонт",
+        "capital": "Капитальный ремонт по ГОСТ",
+        "designer": "Дизайнерский ремонт под ключ",
+    }
+    class_title = class_titles.get(renovation_class, "Капитальный ремонт по ГОСТ")
+    prop_title = "Вторичное жильё" if property_type == "secondary" else "Новостройка (без отделки)"
+
+    tmpl_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), "templates", "estimate.html")
+    if not os.path.exists(tmpl_path):
+        tmpl_path = os.path.join(os.path.dirname(__file__), "templates", "estimate.html")
+
+    html_content = ""
+    if os.path.exists(tmpl_path):
+        with open(tmpl_path, "r", encoding="utf-8") as f:
+            html_content = f.read()
+
+    m_uname = "RemontMasterBot"
+    if master_bot:
+        try:
+            b_info = await master_bot.get_me()
+            m_uname = b_info.username or m_uname
+        except Exception:
+            pass
+
+    from datetime import datetime as dt
+    now_str = dt.now().strftime("%d.%m.%Y")
+    replacements = {
+        "{{ company.name }}": str(company.get("name", "Строительная компания")),
+        "{{ company.subtitle }}": str(company.get("subtitle", "Калькулятор ремонта квартир")),
+        "{{ company.city }}": str(company.get("city", "Москва и МО")),
+        "{{ company.phone }}": str(company.get("phone", "+7 (800) 555-35-35")),
+        "{{ created_date }}": now_str,
+        "{{ area }}": str(int(area)),
+        "{{ property_type_title }}": prop_title,
+        "{{ class_title }}": class_title,
+        "{{ works_total }}": f"{works_total:,.0f}".replace(",", " "),
+        "{{ materials_total }}": f"{materials_total:,.0f}".replace(",", " "),
+        "{{ savings }}": "0",
+        "{{ grand_total }}": f"{grand_total:,.0f}".replace(",", " "),
+        "{{ master_bot_username }}": m_uname,
+    }
+
+    item_rows = f"""
+    <tr class="category-row"><td colspan="4">1. Стены и перегородки</td></tr>
+    <tr><td>Выравнивание стен по лазерным маякам (до 20 мм)</td><td class="num">м²</td><td class="num">550</td><td class="num"><strong>{int(area * 2.8 * 550):,} ₽</strong></td></tr>
+    <tr><td>Шпаклевание стен под обои/покраску в 2 слоя</td><td class="num">м²</td><td class="num">480</td><td class="num"><strong>{int(area * 2.8 * 480):,} ₽</strong></td></tr>
+    <tr class="category-row"><td colspan="4">2. Полы и стяжка</td></tr>
+    <tr><td>Устройство механизированной полусухой стяжки пола</td><td class="num">м²</td><td class="num">650</td><td class="num"><strong>{int(area * 650):,} ₽</strong></td></tr>
+    <tr><td>Настил ламината / кварцвинила с подложкой</td><td class="num">м²</td><td class="num">420</td><td class="num"><strong>{int(area * 420):,} ₽</strong></td></tr>
+    <tr class="category-row"><td colspan="4">3. Электрика и слаботочка</td></tr>
+    <tr><td>Монтаж кабельных трасс ГОСТ ВВГнг-LS в гофре</td><td class="num">м.п.</td><td class="num">190</td><td class="num"><strong>{int(area * 3.5 * 190):,} ₽</strong></td></tr>
+    <tr><td>Сборка и расключение силового электрощита ABB/Schneider</td><td class="num">шт.</td><td class="num">12000</td><td class="num"><strong>12 000 ₽</strong></td></tr>
+    <tr class="category-row"><td colspan="4">4. Сантехника и водоснабжение</td></tr>
+    <tr><td>Разводка труб ХВС/ГВС сшитый полиэтилен Rehau / FAR</td><td class="num">точка</td><td class="num">3800</td><td class="num"><strong>{6 * 3800:,} ₽</strong></td></tr>
+    """.replace(",", " ")
+
+    if "{% for item in items %}" in html_content:
+        before = html_content.split("{% for item in items %}")[0]
+        after = html_content.split("{% endfor %}")[1]
+        html_content = before + item_rows + after
+
+    for k, v in replacements.items():
+        html_content = html_content.replace(k, v)
+
+    return HTMLResponse(content=html_content)
 
 
 # ---------------------------------------------------------------------------

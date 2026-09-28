@@ -8,6 +8,10 @@ import {
   ShieldCheck,
   SlidersHorizontal,
   RefreshCw,
+  Share2,
+  Users,
+  Building2,
+  Sparkles,
 } from 'lucide-react';
 import {
   CalculationResult,
@@ -42,6 +46,7 @@ interface DetailedEstimateSectionProps {
     savingsTotal: number;
   };
   onOpenBooking: () => void;
+  onOpenShare?: () => void;
 }
 
 export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = ({
@@ -55,6 +60,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
   onRestoreAllItems,
   estimateData,
   onOpenBooking,
+  onOpenShare,
 }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
@@ -128,6 +134,21 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 
           {/* Quick Action Toolbar */}
           <div className="flex items-center gap-1">
+            {onOpenShare && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  onOpenShare();
+                }}
+                className="py-1.5 px-2.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-xs font-bold flex items-center gap-1 transition active:scale-95"
+                title="Поделиться сметным расчётом"
+              >
+                <Share2 className="w-3.5 h-3.5 text-zinc-500 dark:text-zinc-400" />
+                <span className="text-[11px]">Шеринг</span>
+              </button>
+            )}
+
             <button
               type="button"
               onClick={handleCopy}
@@ -420,18 +441,96 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
         </p>
       </div>
 
-      {/* 4. Direct CTA to book measurement */}
+      {/* 4. Viral Share Loops: Семейный совет (Шеринг супругу) & Чат ЖК */}
+      {onOpenShare && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 no-print">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('medium');
+              onOpenShare();
+            }}
+            className="p-2.5 rounded-xl bg-blue-50 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/50 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 text-left transition active:scale-[0.99] flex items-center justify-between gap-2 shadow-2xs"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                <Users className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-blue-950 dark:text-blue-100 block leading-tight truncate">
+                  Согласовать с супругом
+                </span>
+                <span className="text-[10px] text-blue-700/80 dark:text-blue-300/80 leading-none">
+                  Шеринг в Telegram в 1 клик
+                </span>
+              </div>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('medium');
+              onOpenShare();
+            }}
+            className="p-2.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200/80 dark:border-amber-900/50 hover:bg-amber-100/80 dark:hover:bg-amber-900/40 text-left transition active:scale-[0.99] flex items-center justify-between gap-2 shadow-2xs"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-7 h-7 rounded-lg bg-amber-600 text-white flex items-center justify-center shrink-0">
+                <Building2 className="w-3.5 h-3.5" />
+              </div>
+              <div className="min-w-0">
+                <span className="text-xs font-bold text-amber-950 dark:text-amber-100 block leading-tight truncate">
+                  Смета в чат своего ЖК
+                </span>
+                <span className="text-[10px] text-amber-700/80 dark:text-amber-300/80 leading-none">
+                  Полезный пост для соседей
+                </span>
+              </div>
+            </div>
+            <ArrowRight className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+          </button>
+        </div>
+      )}
+
+      {/* 5. Direct CTA to book measurement */}
       <button
         type="button"
         onClick={() => {
           triggerHaptic('heavy');
           onOpenBooking();
         }}
-        className="w-full py-3.5 px-4 bg-zinc-950 hover:bg-black text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100 rounded-xl font-bold text-sm transition active:scale-[0.98] flex items-center justify-center gap-2 shadow-sm"
+        className="w-full py-3.5 px-4 bg-zinc-950 hover:bg-black text-white dark:bg-white dark:text-zinc-950 dark:hover:bg-zinc-100 rounded-xl font-bold text-sm transition active:scale-[0.98] flex items-center justify-center gap-2 shadow-sm no-print"
       >
         <span>Зафиксировать смету и записаться на замер 0 ₽</span>
         <ArrowRight className="w-4 h-4" />
       </button>
+
+      {/* 6. Вирусный бейдж Powered by Remont_Bot (Механика 2) */}
+      <div className="p-3 rounded-xl bg-zinc-50 dark:bg-zinc-800/50 border border-zinc-200 dark:border-zinc-800 flex items-center justify-between gap-3 text-left print-avoid-break">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-sm bg-zinc-900 text-white dark:bg-white dark:text-zinc-950">
+              ГОСТ СТАНДАРТ
+            </span>
+            <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+              Сформировано в Remont_Bot
+            </span>
+          </div>
+          <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-1 leading-snug">
+            Единый сметный стандарт без скрытых доплат. Автоматизируйте расчёты вашей строительной компании за 2 минуты.
+          </p>
+        </div>
+        <a
+          href="https://t.me/RemontMasterBot"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 py-1.5 px-2.5 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-600 text-[11px] font-bold shadow-2xs hover:bg-zinc-50 dark:hover:bg-zinc-600 transition"
+        >
+          Подключить
+        </a>
+      </div>
     </div>
   );
 };

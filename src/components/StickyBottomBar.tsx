@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowRight, FileText } from 'lucide-react';
+import { ArrowRight, FileText, Share2 } from 'lucide-react';
 import { CalculationResult } from '../types';
 import { formatCurrency, triggerHaptic } from '../utils/telegram';
 
@@ -7,12 +7,14 @@ interface StickyBottomBarProps {
   result: CalculationResult;
   onOpenBreakdown?: () => void;
   onOpenBooking: () => void;
+  onOpenShare?: () => void;
 }
 
 export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
   result,
   onOpenBreakdown,
   onOpenBooking,
+  onOpenShare,
 }) => {
   const handleBookingClick = () => {
     triggerHaptic('heavy');
@@ -58,15 +60,32 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
           </div>
         </div>
 
-        {/* Right: Booking CTA */}
-        <button
-          type="button"
-          onClick={handleBookingClick}
-          className="py-2.5 px-4 bg-zinc-950 hover:bg-black text-white dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-950 rounded-xl font-bold text-xs sm:text-sm shadow-sm transition active:scale-95 flex items-center gap-1.5 shrink-0"
-        >
-          <span>Замер 0 ₽</span>
-          <ArrowRight className="w-3.5 h-3.5" />
-        </button>
+        {/* Right: Actions */}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {onOpenShare && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenShare();
+              }}
+              className="w-10 h-10 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 flex items-center justify-center transition active:scale-95 border border-zinc-200/80 dark:border-zinc-700/80"
+              title="Отправить смету супругу / в чат ЖК"
+              aria-label="Поделиться сметой"
+            >
+              <Share2 className="w-4 h-4" />
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleBookingClick}
+            className="py-2.5 px-3.5 sm:px-4 bg-zinc-950 hover:bg-black text-white dark:bg-white dark:hover:bg-zinc-100 dark:text-zinc-950 rounded-xl font-bold text-xs sm:text-sm shadow-sm transition active:scale-95 flex items-center gap-1.5"
+          >
+            <span>Замер 0 ₽</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     </div>
   );

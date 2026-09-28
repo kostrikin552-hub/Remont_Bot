@@ -68,3 +68,36 @@ input[type="range"]::-moz-range-thumb {
   padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
 }
 
+/* Print & PDF Export styles (Mechanic 2) */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt;
+  }
+  .no-print,
+  button,
+  nav,
+  header,
+  .fixed,
+  #competitor-audit-banner {
+    display: none !important;
+  }
+  #estimate-breakdown {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+}
+

@@ -27,6 +27,9 @@ ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS subscription_status TEXT D
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS subscription_until TIMESTAMP WITH TIME ZONE;
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS plan_id TEXT DEFAULT '1m';
 ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS trial_leads_used INT DEFAULT 0;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS referred_by TEXT;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS referral_count INT DEFAULT 0;
+ALTER TABLE public.companies ADD COLUMN IF NOT EXISTS bonus_leads INT DEFAULT 0;
 
 -- 2. Таблица тарифов и расценок ремонта для каждой компании
 CREATE TABLE IF NOT EXISTS public.pricing_rules (

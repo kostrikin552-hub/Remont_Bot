@@ -223,14 +223,28 @@ def get_company_subscription(
             sub_data["can_receive_unmasked"] = True
             return sub_data
 
-    # 4. Если платной подписки нет — смотрим статус триала (3 заявки)
+    # 4. Если платной подписки нет — смотрим статус триала (3 базовые заявки + бонусы за рефералов)
     sub_data["is_active"] = False
     sub_data["days_left"] = 0
     trial_used = sub_data["trial_leads_used"]
-    trial_left = max(0, TRIAL_LEADS_COUNT - trial_used)
+    bonus_leads = 0
+    if company and "bonus_leads" in company and company["bonus_leads"]:
+        try:
+            bonus_leads = int(company["bonus_leads"])
+        except (ValueError, TypeError):
+            bonus_leads = 0
+    for search_key in (key, comp_uuid):
+        if search_key and search_key in SUBSCRIPTIONS_CACHE:
+            if "bonus_leads" in SUBSCRIPTIONS_CACHE[search_key]:
+                bonus_leads = max(bonus_leads, int(SUBSCRIPTIONS_CACHE[search_key]["bonus_leads"]))
+
+    total_trial_limit = TRIAL_LEADS_COUNT + bonus_leads
+    trial_left = max(0, total_trial_limit - trial_used)
+    sub_data["bonus_leads"] = bonus_leads
+    sub_data["total_trial_limit"] = total_trial_limit
     sub_data["trial_leads_left"] = trial_left
 
-    if trial_used < TRIAL_LEADS_COUNT:
+    if trial_used < total_trial_limit:
         sub_data["subscription_status"] = "trial"
         sub_data["can_receive_unmasked"] = True
     else:
@@ -270,11 +284,12 @@ def check_and_consume_lead_access(
             "subscription_until": sub_info.get("subscription_until"),
         }
 
-    # Вариант Б: Бесплатный триал (1, 2 или 3 заявка)
+    # Вариант Б: Бесплатный триал (базовые заявки + реферальные бонусы)
     trial_used = sub_info.get("trial_leads_used", 0)
-    if trial_used < TRIAL_LEADS_COUNT:
+    total_limit = sub_info.get("total_trial_limit", TRIAL_LEADS_COUNT)
+    if trial_used < total_limit:
         new_used = trial_used + 1
-        new_left = TRIAL_LEADS_COUNT - new_used
+        new_left = max(0, total_limit - new_used)
 
         # Обновляем кэш
         if key not in SUBSCRIPTIONS_CACHE:
@@ -546,6 +561,57 @@ async def activate_subscription_for_company(
                 )
         except Exception as e:
             logger.error(f"Не удалось отправить поздравление прорабу: {e}")
+
+    # Начисление бонуса пригласившему по реферальной программе (Механика 5)
+    referred_by = res.data.get("referred_by") if (res and res.data) else None
+    if referred_by and supabase_client:
+        try:
+            ref_res = (
+                supabase_client.table("companies")
+                .select("*")
+                .or_(f"id.eq.{referred_by},admin_chat_id.eq.{referred_by}")
+                .maybe_single()
+                .execute()
+            )
+            if ref_res and ref_res.data:
+                ref_comp = ref_res.data
+                ref_comp_id = str(ref_comp.get("id"))
+                ref_chat_id = ref_comp.get("admin_chat_id")
+                ref_sub = get_company_subscription(ref_comp_id, ref_comp, supabase_client)
+                ref_until = ref_sub.get("subscription_until")
+                ref_new_until = (ref_until if ref_until and ref_until > now else now) + timedelta(days=30)
+                save_company_subscription(
+                    ref_comp_id,
+                    {
+                        "subscription_status": "active",
+                        "subscription_until": ref_new_until,
+                        "plan_id": ref_sub.get("plan_id", "1m"),
+                        "is_active": True,
+                    },
+                    company_uuid=ref_comp_id,
+                    supabase_client=supabase_client,
+                )
+                try:
+                    cur_ref_cnt = int(ref_comp.get("referral_count") or 0) + 1
+                    supabase_client.table("companies").update({"referral_count": cur_ref_cnt}).eq("id", ref_comp_id).execute()
+                except Exception:
+                    pass
+
+                if ref_chat_id and MASTER_BOT_TOKEN:
+                    ref_congrats = (
+                        "🎁 <b>ВАМ НАЧИСЛЕН +1 МЕСЯЦ БЕСПЛАТНОЙ ПОДПИСКИ!</b>\n"
+                        "━━━━━━━━━━━━━━━━━━━━\n"
+                        f"🤝 Коллега из компании «{company_name}» оплатил подписку по вашей реферальной ссылке.\n\n"
+                        f"🎉 Ваша подписка продлена на <b>30 дней</b> (экономия 2 990 ₽) до <b>{ref_new_until.strftime('%d.%m.%Y')}</b>!\n"
+                        "Продолжайте рекомендовать сервис коллегам и пользуйтесь Remont_Bot бесплатно."
+                    )
+                    async with httpx.AsyncClient(timeout=10.0) as client:
+                        await client.post(
+                            f"https://api.telegram.org/bot{MASTER_BOT_TOKEN}/sendMessage",
+                            json={"chat_id": ref_chat_id, "text": ref_congrats, "parse_mode": "HTML"},
+                        )
+        except Exception as e:
+            logger.error(f"Ошибка начисления бонуса за реферала: {e}")
 
     # МГНОВЕННАЯ РАЗБЛОКИРОВКА ВСЕХ ЗАБЛОКИРОВАННЫХ ЛИДОВ (locked / paywall_locked)
     unlocked_count = 0
