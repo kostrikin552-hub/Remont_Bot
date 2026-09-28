@@ -454,11 +454,11 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
           >
             <div className="flex items-center gap-2 min-w-0">
               <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
-                <Users className="w-3.5 h-3.5" />
+                <Share2 className="w-3.5 h-3.5" />
               </div>
               <div className="min-w-0">
                 <span className="text-xs font-bold text-blue-950 dark:text-blue-100 block leading-tight truncate">
-                  Согласовать с супругом
+                  Поделиться
                 </span>
                 <span className="text-[10px] text-blue-700/80 dark:text-blue-300/80 leading-none">
                   Шеринг в Telegram в 1 клик
