@@ -236,7 +236,14 @@ export const ViralShareModal: React.FC<ViralShareModalProps> = ({
               </span>
               <div className="flex items-center gap-1.5">
                 <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
-                  <Bot className="w-3.5 h-3.5" />
+                  <div className="w-4 h-4 rounded-full overflow-hidden border border-emerald-500/40 shrink-0">
+                    <img
+                      src="/src/assets/images/bot_avatar_1790670298956.jpg"
+                      alt="Bot Avatar"
+                      className="w-full h-full object-cover"
+                      referrerPolicy="no-referrer"
+                    />
+                  </div>
                   <span>Бот:</span>
                   <span className="font-mono font-bold">@{botUsername}</span>
                 </span>

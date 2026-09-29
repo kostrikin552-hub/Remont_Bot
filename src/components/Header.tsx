@@ -17,8 +17,18 @@ export const Header: React.FC<HeaderProps> = ({
   return (
     <header className="px-4 py-2.5 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-30 transition-colors">
       <div className="flex items-center gap-2.5 min-w-0">
-        <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm shrink-0 shadow-xs">
-          {company.logoLetter || company.name.charAt(0) || 'Р'}
+        <div className="w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-xs border border-zinc-200/60 dark:border-zinc-800 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm">
+          <img
+            src="/src/assets/images/bot_avatar_1790670298956.jpg"
+            alt={company.name}
+            className="w-full h-full object-cover"
+            referrerPolicy="no-referrer"
+            onError={(e) => {
+              // Graceful fallback to initial letter
+              e.currentTarget.style.display = 'none';
+            }}
+          />
+          <span className="hidden only:block">{company.logoLetter || company.name.charAt(0) || 'Р'}</span>
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-1.5 flex-wrap">
