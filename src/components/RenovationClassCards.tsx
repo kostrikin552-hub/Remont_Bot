@@ -83,7 +83,7 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
 
               <div className="mt-2 pt-1.5 border-t border-current/15">
                 <span className="text-xs font-extrabold tabular-nums block leading-tight">
-                  {formatCurrency(item.pricePerMeter)}
+                  от {formatCurrency(item.pricePerMeter)}
                 </span>
                 <span className="text-[10px] opacity-70 leading-none">за м²</span>
               </div>

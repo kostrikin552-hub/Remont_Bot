@@ -64,5 +64,8 @@ MINI_APP_URL: str = normalize_url(
 # Видеоинструкция BotFather
 BOTFATHER_GUIDE_VIDEO_ID: str = os.getenv("BOTFATHER_GUIDE_VIDEO_ID", "").strip()
 
+# Gemini AI API Key
+GEMINI_API_KEY: str = os.getenv("GEMINI_API_KEY", "").strip()
+
 PORT: int = int(os.getenv("PORT", "10000"))
 HOST: str = os.getenv("HOST", "0.0.0.0")

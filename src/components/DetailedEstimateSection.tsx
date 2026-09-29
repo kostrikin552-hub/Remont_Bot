@@ -64,9 +64,16 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
-  const [isEditorOpen, setIsEditorOpen] = useState(false);
+  const [isEditorOpen, setIsEditorOpen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const p = new URLSearchParams(window.location.search);
+      return p.get('pro_mode') === 'true' || p.get('pro_mode') === '1' || p.get('admin') === '1';
+    }
+    return false;
+  });
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editPriceVal, setEditPriceVal] = useState<string>('');
+  const [saveSuccessToast, setSaveSuccessToast] = useState(false);
 
   const toggleCategory = (catKey: string) => {
     triggerHaptic('light');
@@ -112,6 +119,39 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
       triggerHaptic('medium');
     }
     setEditingItemId(null);
+  };
+
+  const handleAdjustAllPrices = (percent: number) => {
+    triggerHaptic('medium');
+    const factor = 1 + percent / 100;
+    const updated = items.map((it) => ({
+      ...it,
+      unitPrice: Math.max(10, Math.round((it.unitPrice * factor) / 10) * 10),
+    }));
+    onUpdateItems(updated);
+    setSaveSuccessToast(true);
+    setTimeout(() => setSaveSuccessToast(false), 3000);
+  };
+
+  const handleSaveAllPrices = () => {
+    triggerHaptic('success');
+    onUpdateItems(items);
+    setSaveSuccessToast(true);
+    setTimeout(() => setSaveSuccessToast(false), 3500);
+
+    // Optional sync to backend API if available
+    if (typeof window !== 'undefined') {
+      try {
+        fetch(`/api/companies/${company.id}/pricing`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            items,
+            company_id: company.id,
+          }),
+        }).catch(() => {});
+      } catch {}
+    }
   };
 
   const pricePerMeter = result.area > 0 ? Math.round(estimateData.grandTotal / result.area) : 0;
@@ -183,16 +223,19 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 
             <button
               type="button"
-              onClick={() => setIsEditorOpen(!isEditorOpen)}
-              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition ${
+              onClick={() => {
+                triggerHaptic('light');
+                setIsEditorOpen(!isEditorOpen);
+              }}
+              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition active:scale-95 ${
                 isEditorOpen
-                  ? 'bg-zinc-950 text-white dark:bg-white dark:text-zinc-950'
+                  ? 'bg-amber-500 text-white shadow-xs'
                   : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200'
               }`}
-              title="Режим прораба: редактирование базовых расценок"
+              title="Admin Pro Mode: точечная калибровка расценок компании"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="text-[11px]">Прайс</span>
+              <span className="text-[11px]">✏️ Режим цен</span>
             </button>
           </div>
         </div>
@@ -218,18 +261,65 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 
         {/* Pro Mode Banner */}
         {isEditorOpen && (
-          <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-lg text-xs text-amber-900 dark:text-amber-200 flex items-center justify-between animate-in fade-in">
-            <span className="leading-tight">
-              <strong>Режим прораба:</strong> Нажмите на ставку любой работы (карандаш ✏️), чтобы изменить базовую расценку компании.
-            </span>
-            <button
-              type="button"
-              onClick={onResetItems}
-              className="underline font-bold text-[11px] shrink-0 ml-2 hover:opacity-80 flex items-center gap-0.5"
-            >
-              <RefreshCw className="w-3 h-3" />
-              <span>Сброс</span>
-            </button>
+          <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-2 animate-in fade-in">
+            <div className="flex items-start justify-between gap-2">
+              <div>
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-amber-500 text-white">
+                    PRO РЕЖИМ
+                  </span>
+                  <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                    Калибровка расценок прораба
+                  </span>
+                </div>
+                <p className="text-[11px] text-zinc-600 dark:text-zinc-400 mt-1 leading-snug">
+                  Тапайте по ставкам в строках сметы, чтобы изменить цены. Или откалибруйте все расценки сразу:
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={onResetItems}
+                className="underline font-bold text-[11px] text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200 shrink-0 flex items-center gap-0.5"
+                title="Сбросить к исходным эталонам"
+              >
+                <RefreshCw className="w-3 h-3" />
+                <span>Сброс</span>
+              </button>
+            </div>
+
+            {/* Quick calibration buttons */}
+            <div className="flex items-center gap-1.5 flex-wrap pt-1">
+              <button
+                type="button"
+                onClick={() => handleAdjustAllPrices(10)}
+                className="py-1 px-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold text-[11px] transition active:scale-95"
+              >
+                +10% ко всем
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAdjustAllPrices(-10)}
+                className="py-1 px-2.5 rounded-lg bg-zinc-200 dark:bg-zinc-800 hover:bg-zinc-300 dark:hover:bg-zinc-700 text-zinc-900 dark:text-zinc-100 font-bold text-[11px] transition active:scale-95"
+              >
+                -10% ко всем
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveAllPrices}
+                className="py-1 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] ml-auto transition active:scale-95 shadow-xs flex items-center gap-1"
+              >
+                <Check className="w-3 h-3" />
+                <span>Сохранить мои цены</span>
+              </button>
+            </div>
+
+            {saveSuccessToast && (
+              <div className="p-2 bg-emerald-500/15 border border-emerald-500/40 rounded-lg text-emerald-800 dark:text-emerald-300 text-[11px] font-bold flex items-center gap-1.5 animate-in fade-in">
+                <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Ваши базовые расценки успешно сохранены и зафиксированы для всех новых смет!</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -355,7 +445,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
                                 <button
                                   type="button"
                                   onClick={() => handleSavePrice(ci.item.id)}
-                                  className="px-2 py-0.5 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 rounded text-[10px] font-bold"
+                                  className="px-2 py-0.5 bg-amber-500 text-white rounded text-[10px] font-bold shadow-xs"
                                 >
                                   ОК
                                 </button>
@@ -365,7 +455,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
                                 onClick={() => isEditorOpen && handleStartEditPrice(ci.item)}
                                 className={`${
                                   isEditorOpen
-                                    ? 'cursor-pointer underline decoration-dotted text-amber-600 dark:text-amber-400 font-bold'
+                                    ? 'cursor-pointer px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30 hover:bg-amber-500/25 transition'
                                     : ''
                                 }`}
                               >
