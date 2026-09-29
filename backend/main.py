@@ -651,12 +651,6 @@ async def master_menu_pricing(message: Message):
                     web_app=WebAppInfo(url=pro_url),
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="📸 AI-Импорт прайса через фото / PDF",
-                    callback_data="master_ai_price_import",
-                )
-            ],
         ]
     )
     await message.answer(text, reply_markup=kb)
@@ -818,99 +812,6 @@ async def master_cb_toggle_single_service(cb: CallbackQuery):
 
 
 # ---------------------------------------------------------------------------
-# Киллер-фича: AI-Импорт прайса через Gemini 3.8 Flash
-# ---------------------------------------------------------------------------
-@master_router.callback_query(F.data == "master_ai_price_import")
-async def master_cb_ai_price_import(cb: CallbackQuery):
-    """Инструкция по AI-импорту прайса через фото или документ"""
-    await cb.answer()
-    text = (
-        "📸 <b>AI-Импорт вашего прайса (Gemini 3.8 Flash):</b>\n\n"
-        "Вам не нужно вручную заполнять сложные таблицы!\n\n"
-        "1. Просто отправьте сюда в диалог <b>фотографию</b> бумажного прайса или документ (PDF / Excel / фото прайса).\n"
-        "2. Нейросеть Gemini 3.8 Flash распознает названия работ, сопоставит их с эталонным каталогом "
-        "(штукатурка, стяжка, шпаклёвка, электрика, плитка) и обновит базу расценок вашей компании за 5 секунд!\n\n"
-        "<i>Отправьте фото или файл прямо в этот чат:</i>"
-    )
-    kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="◀️ Назад к расценкам", callback_data="master_back_prices")],
-        ]
-    )
-    await cb.message.edit_text(text, reply_markup=kb)
-
-
-@master_router.message(F.photo)
-@master_router.message(F.document)
-async def master_handle_price_doc(message: Message):
-    """
-    Обработка присланного фото или документа прайса с автоматическим
-    сопоставлением позиций через Gemini 3.8 Flash.
-    """
-    company = find_company_for_admin(message.from_user.id)
-    if not company:
-        await message.answer(
-            "🏢 Сначала подключите вашего бота через /start, чтобы мы знали, в какую компанию загрузить расценки!",
-            reply_markup=get_main_master_menu(),
-        )
-        return
-
-    comp_id = company.get("id") or company.get("bot_username") or "cuberlife_bot"
-    uname = company.get("bot_username") or "moscow_remont_bot"
-    cname = company.get("name") or "РемонтПро"
-
-    analyzing_msg = await message.answer(
-        "🧠 <b>Нейросеть Gemini 3.8 Flash анализирует ваш документ...</b>\n\n"
-        "• Извлечение текстовых блоков и таблиц\n"
-        "• Сопоставление с эталонным каталогом отделочных работ ГОСТ\n"
-        "• Расчет базовых ставок за м²"
-    )
-
-    try:
-        # Автоматическая интеллектуальная калибровка базовых ставок
-        p_cap = 12500
-        p_comf = 17000
-        p_des = 24500
-        p_mat = 6800
-
-        if supabase_client:
-            update_data = {
-                "capital_price": p_cap,
-                "price_capital": p_cap,
-                "comfort_price": p_comf,
-                "designer_price": p_des,
-                "price_designer": p_des,
-                "materials_price": p_mat,
-                "price_materials_m2": p_mat,
-            }
-            supabase_client.table("pricing_rules").update(update_data).or_(f"company_id.eq.{comp_id},company_id.eq.{uname}").execute()
-
-        success_text = (
-            f"🎉 <b>Прайс успешно распознан и применён для компании «{cname}»!</b>\n\n"
-            "✅ <b>Распознано и обновлено 14 позиций эталонного каталога:</b>\n"
-            "• Штукатурка стен по маякам: <b>720 ₽/м²</b>\n"
-            "• Стяжка пола цементная / полусухая: <b>650 ₽/м²</b>\n"
-            "• Шпаклёвка под обои и покраску: <b>580 ₽/м²</b>\n"
-            "• Электромонтаж (кабель + щит): <b>1 100 ₽/точка</b>\n"
-            "• Укладка керамогранита: <b>1 900 ₽/м²</b>\n"
-            "• Базовый тариф «Капитальный»: <b>12 500 ₽/м²</b>\n\n"
-            f"👉 Все расчёты в боте @{uname} пересчитаны по вашим новым стандартам!"
-        )
-        kb = InlineKeyboardMarkup(
-            inline_keyboard=[
-                [InlineKeyboardButton(text="🧮 Проверить смету в боте", url=f"https://t.me/{uname}")],
-                [InlineKeyboardButton(text="⚙️ Посмотреть мои расценки", callback_data="master_back_prices")],
-            ]
-        )
-        await analyzing_msg.edit_text(success_text, reply_markup=kb)
-    except Exception as e:
-        logger.error(f"Ошибка AI-импорта: {e}")
-        await analyzing_msg.edit_text(
-            "⚠️ Не удалось автоматически прочесть документ. Вы можете отредактировать расценки вручную через кнопку «⚙️ Мои расценки» в меню."
-        )
-
-
-# ---------------------------------------------------------------------------
 # 4. Кнопка «💎 Тариф и подписка» (Шлюз монетизации)
 # ---------------------------------------------------------------------------
 @master_router.message(F.text == "💎 Тариф и подписка")
@@ -985,15 +886,22 @@ async def master_menu_referral_btn(message: Message):
 async def master_menu_help(message: Message):
     """База знаний, видео-уроки и прямой контакт основателя"""
     text = (
-        "🆘 <b>БАЗА ЗНАНИЙ И ПОДДЕРЖКА</b>\n\n"
-        "🎬 <b>Видео:</b> Как настроить бота за 2 минуты\n"
-        "📈 <b>Инструкция:</b> Как получать от 3 заявок в день с Авито\n"
-        "📄 <b>Шаблон:</b> Как составить договор подряда по нашей смете\n\n"
-        "<i>Возникли вопросы или что-то сломалось?</i>"
+        "🆘 <b>БАЗА ЗНАНИЙ И ИНСТРУКЦИИ</b>\n\n"
+        "📖 <b>Инструкция простыми словами:</b> как устроен бот и калькулятор\n"
+        "🎬 <b>Видео:</b> Как подключить бота за 2 минуты\n"
+        "📈 <b>Авито:</b> Как получать от 3 заявок в день\n"
+        "📄 <b>Шаблон:</b> Договор подряда по нашей смете\n\n"
+        "<i>Выберите нужный раздел или напишите в поддержку:</i>"
     )
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📖 Как всё устроено (Простая инструкция)",
+                    callback_data="master_help_manual",
+                )
+            ],
             [
                 InlineKeyboardButton(
                     text="🎬 Видео: Настройка за 2 минуты",
@@ -1021,6 +929,34 @@ async def master_menu_help(message: Message):
         ]
     )
     await message.answer(text, reply_markup=kb)
+
+
+@master_router.callback_query(F.data == "master_help_manual")
+async def master_cb_help_manual(cb: CallbackQuery):
+    """Простая инструкция по работе связки Бот + Mini App для прораба"""
+    await cb.answer()
+    company = find_company_for_admin(cb.from_user.id) or {}
+    uname = company.get("bot_username") or "ваш_бот"
+
+    manual_text = (
+        "📖 <b>КАК РАБОТАЕТ ВАШ БОТ И КАЛЬКУЛЯТОР (НА ПАЛЬЦАХ):</b>\n\n"
+        "Вся система состоит из 2 простых частей:\n\n"
+        "1️⃣ <b>Ваш личный бот для клиентов (@" + uname + ")</b>\n"
+        "• Это ссылка, которую вы даёте заказчикам на Авито, в соцсетях или по сарафанному радио.\n"
+        "• Клиент нажимает <i>«Рассчитать стоимость»</i> — прямо внутри Telegram открывается удобный мини-сайт.\n"
+        "• Клиент двигает ползунок площади (например, 54 м²), выбирает тип ремонта (Капитальный / Комфорт / Дизайнерский) и видит точную стоимость.\n"
+        "• Нажав кнопку «Зафиксировать смету», клиент оставляет своё имя и телефон.\n"
+        "• <b>Вы мгновенно получаете уведомление в этот чат</b> со всеми параметрами квартиры и готовым расчётом!\n\n"
+        "2️⃣ <b>Мини-приложение (умный калькулятор):</b>\n"
+        "• <b>Это не просто цифра с потолка, а честная смета по ГОСТ</b>: штукатурка стен, стяжка, проводка, плитка, обои.\n"
+        "• Клиент может сам снять галочки с тех работ, которые ему не нужны (например, если потолки делает знакомый) — смета пересчитается на лету, а клиент увидит свою экономию.\n"
+        "• Блок «Анти-развод» объясняет клиенту, почему смета не вырастет в 2 раза на объекте.\n\n"
+        "⚙️ <b>Как настроить цены под себя:</b>\n"
+        "• Зайдите в меню <b>«⚙️ Мои расценки»</b> внизу экрана.\n"
+        "• Нажмите <b>«✏️ Редактировать базовые цены»</b> (+10% / -10% к рынку) или отключите ненужные услуги тумблером.\n"
+        "• Или нажмите <b>«🧮 Открыть детальную смету (Pro Mode)»</b> и меняйте расценку любой строки прямо тапом по экрану!"
+    )
+    await cb.message.answer(manual_text)
 
 
 @master_router.callback_query(F.data == "master_help_video")
