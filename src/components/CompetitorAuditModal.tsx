@@ -29,8 +29,6 @@ export const CompetitorAuditModal: React.FC<CompetitorAuditModalProps> = ({
   const [auditArea, setAuditArea] = useState<number>(initialArea);
   const [auditType, setAuditType] = useState<'cosmetic' | 'capital' | 'designer'>('capital');
 
-  if (!isOpen) return null;
-
   const rawNum = parseInt(competitorPrice.replace(/\D/g, ''), 10) || 0;
   const pricePerMeter = auditArea > 0 ? Math.round(rawNum / auditArea) : 0;
 
@@ -82,6 +80,8 @@ export const CompetitorAuditModal: React.FC<CompetitorAuditModalProps> = ({
       difference: 'Рыночная цена без явного обмана',
     };
   }, [pricePerMeter, currentBenchmark]);
+
+  if (!isOpen) return null;
 
   const handleApply = () => {
     triggerHaptic('medium');
