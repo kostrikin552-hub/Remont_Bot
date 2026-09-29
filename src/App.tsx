@@ -110,6 +110,22 @@ export default function App() {
       const urlParams = new URLSearchParams(window.location.search);
       const qArea = urlParams.get('area');
       const qClass = urlParams.get('class');
+      const qBot = urlParams.get('bot') || urlParams.get('bot_username') || urlParams.get('tg_bot');
+      const receiverBot = (window.Telegram?.WebApp?.initDataUnsafe as { receiver?: { username?: string } })?.receiver?.username;
+      const detectedBotRaw = qBot || receiverBot;
+
+      if (detectedBotRaw) {
+        const clean = detectedBotRaw.replace(/^@/, '').trim();
+        try {
+          localStorage.setItem('remont_bot_username', clean);
+        } catch {
+          // ignore
+        }
+        setCompany((prev) => ({
+          ...prev,
+          botUsername: clean,
+        }));
+      }
       const startParam = window.Telegram?.WebApp?.initDataUnsafe?.start_param;
 
       if (qArea) {

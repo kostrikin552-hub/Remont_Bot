@@ -55,6 +55,7 @@ export interface CompanyConfig {
   secondaryCoeff: number;
   logoLetter: string;
   badgeText?: string;
+  botUsername?: string;
 }
 
 export interface PricingRules {

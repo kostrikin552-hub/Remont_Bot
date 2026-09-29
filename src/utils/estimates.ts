@@ -508,11 +508,16 @@ export function formatTextEstimate(
   propertyType: PropertyType,
   tariffTitle: string,
   groups: EstimateCategoryGroup[],
-  grandTotal: number
+  grandTotal: number,
+  botUsername?: string
 ): string {
   const dateStr = new Date().toLocaleDateString('ru-RU');
   let text = `📄 ДЕТАЛИЗИРОВАННАЯ ИНЖЕНЕРНАЯ СМЕТА НА РЕМОНТ\n`;
   text += `Компания: ${companyName}\n`;
+  if (botUsername) {
+    const cleanBot = botUsername.replace(/^@/, '').trim();
+    text += `Telegram-бот компании: @${cleanBot} (https://t.me/${cleanBot}?start=calc_${area})\n`;
+  }
   text += `Дата формирования: ${dateStr}\n`;
   text += `Объект: ${area} м² (${propertyType === 'new' ? 'Новостройка' : 'Вторичное жилье'})\n`;
   text += `Тарифный план: ${tariffTitle}\n`;
@@ -534,7 +539,11 @@ export function formatTextEstimate(
   text += `=====================================\n`;
   text += `💰 ИТОГО ПО СМЕТЕ: ${grandTotal.toLocaleString('ru-RU')} ₽\n`;
   text += `🔒 Все цены фиксируются в приложении к договору.\n`;
-  text += `🎁 В подарок: лазерный замер 0 ₽ и 3D-план расстановки мебели!`;
+  text += `🎁 В подарок: лазерный замер 0 ₽ и 3D-план расстановки мебели!\n`;
+  if (botUsername) {
+    const cleanBot = botUsername.replace(/^@/, '').trim();
+    text += `👉 Открыть и изменить расчёт в боте: https://t.me/${cleanBot}?start=calc_${area}`;
+  }
 
   return text;
 }

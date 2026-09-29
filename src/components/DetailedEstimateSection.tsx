@@ -23,7 +23,7 @@ import {
 import {
   formatTextEstimate,
 } from '../utils/estimates';
-import { formatCurrency, triggerHaptic } from '../utils/telegram';
+import { formatCurrency, triggerHaptic, getDetectedBotUsername } from '../utils/telegram';
 
 interface DetailedEstimateSectionProps {
   result: CalculationResult;
@@ -76,6 +76,8 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
     }));
   };
 
+  const botUsername = getDetectedBotUsername(company.botUsername, company.id);
+
   const handleCopy = () => {
     triggerHaptic('success');
     const text = formatTextEstimate(
@@ -84,7 +86,8 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
       result.propertyType,
       result.renovationClass.title,
       estimateData.groups,
-      estimateData.grandTotal
+      estimateData.grandTotal,
+      botUsername
     );
     navigator.clipboard?.writeText(text);
     setCopied(true);
@@ -523,7 +526,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
           </p>
         </div>
         <a
-          href="https://t.me/RemontMasterBot"
+          href={`https://t.me/${botUsername}?start=connect`}
           target="_blank"
           rel="noopener noreferrer"
           className="shrink-0 py-1.5 px-2.5 rounded-lg bg-white dark:bg-zinc-700 text-zinc-900 dark:text-white border border-zinc-200 dark:border-zinc-600 text-[11px] font-bold shadow-2xs hover:bg-zinc-50 dark:hover:bg-zinc-600 transition"

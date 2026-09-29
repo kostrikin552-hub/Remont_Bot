@@ -50,6 +50,7 @@ export const DEMO_COMPANIES: Record<
       secondaryCoeff: 1.15,
       logoLetter: 'Р',
       badgeText: 'PRO',
+      botUsername: 'remont_pro_bot',
     },
     pricing: {
       cosmeticPrice: 4500,
@@ -71,6 +72,7 @@ export const DEMO_COMPANIES: Record<
       secondaryCoeff: 1.20,
       logoLetter: 'Э',
       badgeText: 'ELITE',
+      botUsername: 'elite_stroi_bot',
     },
     pricing: {
       cosmeticPrice: 5200,
@@ -92,6 +94,7 @@ export const DEMO_COMPANIES: Record<
       secondaryCoeff: 1.10,
       logoLetter: 'М',
       badgeText: 'МАСТЕР',
+      botUsername: 'master_remonta_bot',
     },
     pricing: {
       cosmeticPrice: 3900,
@@ -116,7 +119,9 @@ export function getCompanyIdFromContext(): string {
   const fromQuery =
     urlParams.get('company_id') ||
     urlParams.get('company') ||
-    urlParams.get('tenant');
+    urlParams.get('tenant') ||
+    urlParams.get('bot') ||
+    urlParams.get('bot_username');
 
   if (fromQuery && fromQuery.trim()) {
     return fromQuery.trim().toLowerCase();
@@ -144,6 +149,34 @@ export async function fetchCompanyData(companyId: string): Promise<{
 }> {
   const defaultPricing = DEMO_COMPANIES[DEFAULT_COMPANY_ID].pricing;
 
+  // Извлекаем актуальный юзернейм Telegram-бота из контекста запуска (URL, Telegram WebApp или кэш)
+  let detectedBot: string | undefined;
+  if (typeof window !== 'undefined') {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromUrl =
+        urlParams.get('bot') ||
+        urlParams.get('bot_username') ||
+        urlParams.get('botName') ||
+        urlParams.get('tg_bot');
+      if (fromUrl && fromUrl.trim()) {
+        detectedBot = fromUrl.replace(/^@/, '').trim();
+      } else {
+        const tgReceiver = (window.Telegram?.WebApp?.initDataUnsafe as { receiver?: { username?: string } })?.receiver?.username;
+        if (tgReceiver) {
+          detectedBot = tgReceiver.replace(/^@/, '').trim();
+        } else {
+          const cached = localStorage.getItem('remont_bot_username');
+          if (cached && cached.trim()) {
+            detectedBot = cached.replace(/^@/, '').trim();
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   // 1. Try backend API endpoint (monolith on Render)
   const companyEndpoint = backendUrl
     ? `${backendUrl}/api/companies/${encodeURIComponent(companyId)}`
@@ -156,6 +189,12 @@ export async function fetchCompanyData(companyId: string): Promise<{
       if (data && data.company) {
         const c = data.company;
         const p = data.pricing || {};
+        const resolvedBot =
+          detectedBot ||
+          c.bot_username ||
+          c.botUsername ||
+          (companyId.toLowerCase().includes('bot') ? companyId : 'remont_pro_bot');
+
         return {
           company: {
             id: companyId,
@@ -167,6 +206,7 @@ export async function fetchCompanyData(companyId: string): Promise<{
             secondaryCoeff: Number(p.coef_secondary ?? c.secondary_coeff ?? 1.15),
             logoLetter: c.logo_letter || (c.name ? c.name[0].toUpperCase() : 'Р'),
             badgeText: c.badge_text || 'PRO',
+            botUsername: resolvedBot,
           },
           pricing: {
             cosmeticPrice: Number(p.price_cosmetic ?? p.cosmetic_price ?? defaultPricing.cosmeticPrice),
@@ -202,6 +242,11 @@ export async function fetchCompanyData(companyId: string): Promise<{
           .maybeSingle();
 
         const p = priceData || {};
+        const resolvedBot =
+          detectedBot ||
+          compData.bot_username ||
+          compData.botUsername ||
+          (companyId.toLowerCase().includes('bot') ? companyId : 'remont_pro_bot');
 
         return {
           company: {
@@ -214,6 +259,7 @@ export async function fetchCompanyData(companyId: string): Promise<{
             secondaryCoeff: Number(p.coef_secondary ?? compData.secondary_coeff ?? 1.15),
             logoLetter: compData.logo_letter || compData.name?.[0] || 'Р',
             badgeText: compData.badge_text || 'PRO',
+            botUsername: resolvedBot,
           },
           pricing: {
             cosmeticPrice: Number(p.price_cosmetic ?? p.cosmetic_price ?? defaultPricing.cosmeticPrice),
@@ -233,10 +279,17 @@ export async function fetchCompanyData(companyId: string): Promise<{
 
   // 3. Fallback to demo companies (preserving the requested company ID)
   const found = DEMO_COMPANIES[companyId] || DEMO_COMPANIES[DEFAULT_COMPANY_ID];
+  const isBotSlug = companyId.toLowerCase().includes('bot');
+  const resolvedBot =
+    detectedBot ||
+    (isBotSlug ? companyId.replace(/^@/, '') : found.company.botUsername) ||
+    'remont_pro_bot';
+
   return {
     company: {
       ...found.company,
       id: companyId || found.company.id,
+      botUsername: resolvedBot,
     },
     pricing: found.pricing,
     isFromSupabase: false,

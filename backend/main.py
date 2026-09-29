@@ -806,7 +806,8 @@ async def master_process_token(message: Message, state: FSMContext):
             logger.debug(f"Не удалось отправить уведомление рефереру: {e}")
 
     # 3. Настройка кнопки меню чата (setChatMenuButton)
-    app_url = f"{MINI_APP_URL}?company_id={company_id}"
+    bot_uname = bot_username or company_id
+    app_url = f"{MINI_APP_URL}?company_id={company_id}&bot={bot_uname}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             menu_btn_payload = {
@@ -1179,7 +1180,8 @@ async def client_bot_webhook(company_id: str, request: Request):
     # -----------------------------------------------------------------------
     # ЕСЛИ ПОДПИСКА АКТИВНА: штатная работа бота для клиентов ЧЕРЕЗ КНОПКИ
     # -----------------------------------------------------------------------
-    app_url = f"{MINI_APP_URL}?company_id={company_id}"
+    bot_uname = company_data.get("bot_username") or company_id
+    app_url = f"{MINI_APP_URL}?company_id={company_id}&bot={bot_uname}"
     company_name = company_data.get("name", "РемонтПро")
     company_city = company_data.get("city", "Москва и МО")
     company_phone = company_data.get("phone", "+7 (800) 555-35-35")

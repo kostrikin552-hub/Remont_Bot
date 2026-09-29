@@ -94,12 +94,130 @@ export function formatCurrency(value: number): string {
 }
 
 /**
- * Открывает нативный диалог выбора чата Telegram для отправки сообщения с ссылкой.
- * Использует openTelegramLink c tg:// или https://t.me/share/url
+ * Очищает юзернейм бота Telegram от символов '@', протоколов и ссылок
  */
-export function openTelegramShare(url: string, text?: string): boolean {
+export function cleanTelegramBotUsername(raw?: string | null): string {
+  if (!raw) return '';
+  let cleaned = raw.trim();
+  // Убираем https://t.me/, t.me/, tg://resolve?domain=
+  cleaned = cleaned.replace(/^https?:\/\/t\.me\//i, '');
+  cleaned = cleaned.replace(/^t\.me\//i, '');
+  cleaned = cleaned.replace(/^tg:\/\/resolve\?domain=/i, '');
+  cleaned = cleaned.replace(/^@/, '');
+  // Убираем параметры запроса (?start=...) если попали в юзернейм
+  cleaned = cleaned.split('?')[0].split('/')[0].trim();
+  return cleaned;
+}
+
+/**
+ * Определяет актуальный Telegram-бот компании, в котором производился расчёт.
+ * Приоритет:
+ * 1. URL search query (?bot=... или ?bot_username=...)
+ * 2. Сохраненное значение в localStorage / sessionStorage
+ * 3. Telegram WebApp start_param или receiver (если запущен из бота)
+ * 4. Конфигурация компании company.botUsername
+ * 5. company.id (если оканчивается на bot или содержит _bot)
+ * 6. Фолбек-бот по умолчанию
+ */
+export function getDetectedBotUsername(companyBot?: string, companyId?: string): string {
+  // 1. Проверяем URL параметры
+  if (typeof window !== 'undefined') {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const fromUrl =
+        urlParams.get('bot') ||
+        urlParams.get('bot_username') ||
+        urlParams.get('botName') ||
+        urlParams.get('tg_bot');
+      if (fromUrl && fromUrl.trim()) {
+        const clean = cleanTelegramBotUsername(fromUrl);
+        if (clean) {
+          localStorage.setItem('remont_bot_username', clean);
+          return clean;
+        }
+      }
+
+      // Проверяем start_param из Telegram
+      const tgStart =
+        window.Telegram?.WebApp?.initDataUnsafe?.start_param ||
+        urlParams.get('tgWebAppStartParam');
+      if (tgStart && (tgStart.startsWith('bot_') || tgStart.startsWith('b_'))) {
+        const clean = cleanTelegramBotUsername(tgStart.replace(/^(bot_|b_)/, ''));
+        if (clean) {
+          localStorage.setItem('remont_bot_username', clean);
+          return clean;
+        }
+      }
+
+      // Проверяем Telegram receiver (если доступен в WebApp)
+      const receiver = (window.Telegram?.WebApp?.initDataUnsafe as { receiver?: { username?: string } })?.receiver;
+      if (receiver?.username) {
+        const clean = cleanTelegramBotUsername(receiver.username);
+        if (clean) {
+          localStorage.setItem('remont_bot_username', clean);
+          return clean;
+        }
+      }
+
+      // 2. Проверяем сохраненный в хранилище юзернейм бота
+      const cached = localStorage.getItem('remont_bot_username');
+      if (cached && cached.trim()) {
+        return cleanTelegramBotUsername(cached);
+      }
+    } catch {
+      // Игнорируем ошибки доступа к storage
+    }
+  }
+
+  // 3. Конфигурация компании
+  if (companyBot && companyBot.trim()) {
+    const clean = cleanTelegramBotUsername(companyBot);
+    if (clean) return clean;
+  }
+
+  // 4. Проверяем company.id если он выглядит как бот
+  if (companyId) {
+    const lower = companyId.toLowerCase().trim();
+    if (lower.endsWith('bot') || lower.includes('_bot')) {
+      return cleanTelegramBotUsername(lower);
+    }
+  }
+
+  return 'remont_pro_bot';
+}
+
+/**
+ * Формирует ссылку строго на Telegram-бота компании с параметрами расчета (для старта диалога с ботом),
+ * а НЕ на веб-приложение / мини-апп.
+ * При клике на ссылку в Telegram открывается чат с ботом компании с кнопкой «Старт»,
+ * что позволяет боту зафиксировать пользователя в CRM как нового лида.
+ */
+export function buildCompanyBotUrl(
+  botUsername: string,
+  area: number,
+  tariffId: string,
+  companyId?: string
+): string {
+  const cleanBot = cleanTelegramBotUsername(botUsername) || 'remont_pro_bot';
+  const compPart = companyId && companyId !== cleanBot && !companyId.toLowerCase().includes('bot') ? `_${companyId}` : '';
+  return `https://t.me/${cleanBot}?start=calc_${area}_${tariffId}${compPart}`;
+}
+
+/**
+ * Прямая ссылка на бота компании в Telegram (для перехода в диалог)
+ */
+export function buildDirectCompanyBotUrl(botUsername: string): string {
+  const cleanBot = cleanTelegramBotUsername(botUsername) || 'remont_pro_bot';
+  return `https://t.me/${cleanBot}`;
+}
+
+/**
+ * Открывает нативный диалог выбора чата Telegram для отправки сообщения с ссылкой.
+ * Ссылка ведет строго на Telegram-бота компании!
+ */
+export function openTelegramShare(botUrl: string, text?: string): boolean {
   triggerHaptic('medium');
-  const encodedUrl = encodeURIComponent(url);
+  const encodedUrl = encodeURIComponent(botUrl);
   const encodedText = text ? encodeURIComponent(text) : '';
   const shareLink = `https://t.me/share/url?url=${encodedUrl}&text=${encodedText}`;
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   X,
   Share2,
@@ -10,9 +10,19 @@ import {
   Sparkles,
   ArrowRight,
   ShieldCheck,
+  Bot,
+  Edit2,
 } from 'lucide-react';
 import { CompanyConfig, CalculationResult, RenovationClass } from '../types';
-import { formatCurrency, openTelegramShare, copyTextToClipboard, triggerHaptic } from '../utils/telegram';
+import {
+  formatCurrency,
+  openTelegramShare,
+  copyTextToClipboard,
+  triggerHaptic,
+  getDetectedBotUsername,
+  cleanTelegramBotUsername,
+  buildCompanyBotUrl,
+} from '../utils/telegram';
 
 interface ViralShareModalProps {
   isOpen: boolean;
@@ -35,37 +45,61 @@ export const ViralShareModal: React.FC<ViralShareModalProps> = ({
   const [jkName, setJkName] = useState<string>('ЖК Скандинавия');
   const [copied, setCopied] = useState<boolean>(false);
 
+  // Юзернейм Telegram-бота компании, в котором производился расчёт
+  const [botUsername, setBotUsername] = useState<string>(() =>
+    getDetectedBotUsername(company.botUsername, company.id)
+  );
+  const [isEditingBot, setIsEditingBot] = useState<boolean>(false);
+  const [botInputVal, setBotInputVal] = useState<string>('');
+
+  // Синхронизируем юзернейм бота при смене компании
+  useEffect(() => {
+    const detected = getDetectedBotUsername(company.botUsername, company.id);
+    setBotUsername(detected);
+  }, [company.botUsername, company.id]);
+
   if (!isOpen) return null;
 
-  // Формируем интерактивную ссылку с параметрами сметы
-  const baseUrl = typeof window !== 'undefined'
-    ? `${window.location.origin}${window.location.pathname}`
-    : 'https://remont-bot.ru';
-  
-  const botUsername = company.botUsername || 'Remont_Bot';
-  const estimateQuery = `company_id=${encodeURIComponent(company.id)}&area=${result.area}&class=${selectedClass.id}&utm_source=share_${activeTab}`;
-  
-  // Если есть бот, формируем deep-link t.me бота, иначе прямую ссылку на Mini App
-  const shareWebUrl = `${baseUrl}?${estimateQuery}`;
-  const shareBotUrl = `https://t.me/${botUsername}?start=calc_${result.area}_${selectedClass.id}`;
-  const effectiveUrl = botUsername && botUsername !== 'Remont_Bot' ? shareBotUrl : shareWebUrl;
+  const handleSaveBot = () => {
+    const cleaned = cleanTelegramBotUsername(botInputVal);
+    if (cleaned) {
+      setBotUsername(cleaned);
+      if (typeof window !== 'undefined') {
+        try {
+          localStorage.setItem('remont_bot_username', cleaned);
+        } catch {
+          // ignore
+        }
+      }
+      triggerHaptic('success');
+    }
+    setIsEditingBot(false);
+  };
 
-  // Текст для Супруга/Супруги (Механика 1: Семейный совет)
+  // Прямая ссылка строго на бота компании с параметрами расчета (для старта диалога с ботом)
+  const companyBotUrl = buildCompanyBotUrl(
+    botUsername,
+    result.area,
+    selectedClass.id,
+    company.id
+  );
+
+  // Текст для отправки (Механика 1: Семейный совет / Поделиться)
   const savingsPart = savings > 0 ? ` (сэкономили ${formatCurrency(savings)} на исключении лишних позиций)` : '';
-  const familyText = `Посмотри предварительную смету нашего ремонта: ${formatCurrency(result.totalCost)} на ${result.area} м² (тариф «${selectedClass.title}»)${savingsPart}. Я проверил расценки по ГОСТ без скрытых доплат. Посмотри интерактивный расклад и скажи, что думаешь:`;
+  const familyText = `Посмотри предварительную смету нашего ремонта: ${formatCurrency(result.totalCost)} на ${result.area} м² (тариф «${selectedClass.title}»)${savingsPart}. Я проверил расценки по ГОСТ без скрытых доплат в боте «${company.name}» (@${botUsername}). Посмотри интерактивный расклад и скажи, что думаешь:`;
 
   // Текст для чата ЖК (Механика 3: Посев в чаты новостроек)
-  const communityText = `Соседи из ${jkName.trim() || 'нашего ЖК'}! Посчитал в сметном калькуляторе реальную стоимость ремонта на типовую квартиру ${result.area} м² по действующим расценкам 2026 года. Стяжка, стены по маякам, электрика по ГОСТу — вышло ~${formatCurrency(result.totalCost)} (без накруток за бренд и без скрытых доплат). Кому актуально прицениться к отделке — вот открытый интерактивный расклад:`;
+  const communityText = `Соседи из ${jkName.trim() || 'нашего ЖК'}! Посчитал в сметном боте @${botUsername} («${company.name}») реальную стоимость ремонта на типовую квартиру ${result.area} м² по действующим расценкам 2026 года. Стяжка, стены по маякам, электрика по ГОСТу — вышло ~${formatCurrency(result.totalCost)} (без накруток за бренд и без скрытых доплат). Кому актуально прицениться к отделке — вот открытый интерактивный расклад:`;
 
   const currentText = activeTab === 'family' ? familyText : communityText;
 
   const handleNativeShare = () => {
     triggerHaptic('medium');
-    openTelegramShare(effectiveUrl, currentText);
+    openTelegramShare(companyBotUrl, currentText);
   };
 
   const handleCopy = async () => {
-    const fullMessage = `${currentText}\n\n${effectiveUrl}`;
+    const fullMessage = `${currentText}\n\n👉 Открыть расчет в Telegram-боте компании:\n${companyBotUrl}`;
     const success = await copyTextToClipboard(fullMessage);
     if (success) {
       setCopied(true);
@@ -196,14 +230,80 @@ export const ViralShareModal: React.FC<ViralShareModalProps> = ({
 
           {/* Generated Message Preview */}
           <div className="space-y-1.5">
-            <span className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
-              Текст сообщения в Telegram:
-            </span>
+            <div className="flex items-center justify-between">
+              <span className="text-[11px] font-bold text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">
+                Текст сообщения в Telegram:
+              </span>
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                  <Bot className="w-3.5 h-3.5" />
+                  <span>Бот:</span>
+                  <span className="font-mono font-bold">@{botUsername}</span>
+                </span>
+                {!isEditingBot ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setBotInputVal(botUsername);
+                      setIsEditingBot(true);
+                    }}
+                    className="p-1 text-zinc-400 hover:text-zinc-700 dark:hover:text-zinc-200 transition"
+                    title="Изменить юзернейм бота"
+                  >
+                    <Edit2 className="w-3 h-3" />
+                  </button>
+                ) : null}
+              </div>
+            </div>
+
+            {/* Быстрый редактор юзернейма бота (если прораб хочет указать другой свой бот) */}
+            {isEditingBot && (
+              <div className="p-2 bg-zinc-100 dark:bg-zinc-800 rounded-xl border border-zinc-200 dark:border-zinc-700 flex items-center gap-2 animate-in fade-in">
+                <span className="text-xs font-mono font-bold text-zinc-500">@</span>
+                <input
+                  type="text"
+                  value={botInputVal}
+                  onChange={(e) => setBotInputVal(e.target.value)}
+                  placeholder="юзернейм_бота (например stroy_bot)"
+                  className="flex-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-lg px-2.5 py-1 text-xs text-zinc-900 dark:text-white font-mono focus:outline-hidden focus:ring-1 focus:ring-zinc-900"
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  onClick={handleSaveBot}
+                  className="px-2.5 py-1 bg-zinc-950 text-white dark:bg-white dark:text-zinc-950 rounded-lg text-xs font-bold"
+                >
+                  ОК
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsEditingBot(false)}
+                  className="p-1 text-zinc-400 hover:text-zinc-600"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+
             <div className="p-3 bg-zinc-100 dark:bg-zinc-800 rounded-xl text-xs text-zinc-800 dark:text-zinc-200 leading-relaxed border border-zinc-200 dark:border-zinc-700 select-all font-sans">
               <p className="whitespace-pre-line">{currentText}</p>
-              <div className="mt-2 pt-2 border-t border-zinc-200 dark:border-zinc-700 text-[11px] text-blue-600 dark:text-blue-400 break-all font-mono">
-                {effectiveUrl}
+              <div className="mt-2.5 pt-2.5 border-t border-zinc-200 dark:border-zinc-700 flex flex-col gap-1">
+                <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-semibold uppercase">
+                  Прямая ссылка на бота компании:
+                </span>
+                <span className="text-[11px] text-blue-600 dark:text-blue-400 break-all font-mono font-bold">
+                  {companyBotUrl}
+                </span>
               </div>
+            </div>
+
+            {/* Поясняющая плашка: ссылка на бота, а не на мини-апп */}
+            <div className="p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+              <p className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-snug">
+                <b>Защита лида:</b> отправляется ссылка именно на бота компании <code>@{botUsername}</code> (а не на мини-приложение). Получатель переходит в диалог с ботом, нажимает «Старт» и навсегда фиксируется как ваш лид в Telegram.
+              </p>
             </div>
           </div>
         </div>

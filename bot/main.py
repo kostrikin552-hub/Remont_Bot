@@ -48,21 +48,32 @@ logger = logging.getLogger("remont_bot")
 router = Router()
 
 
-def get_webapp_url(company_id: Optional[str] = None) -> str:
-    """Генерация URL WebApp с учётом тенанта"""
+CURRENT_BOT_USERNAME: str = os.getenv("BOT_USERNAME", "")
+
+
+def get_webapp_url(company_id: Optional[str] = None, bot_username: Optional[str] = None) -> str:
+    """Генерация URL WebApp с учётом тенанта и юзернейма бота компании"""
     url = WEBAPP_URL
+    params = []
     if company_id:
+        params.append(f"company_id={company_id}")
+    active_bot = bot_username or CURRENT_BOT_USERNAME or os.getenv("BOT_USERNAME", "")
+    if active_bot:
+        clean_bot = active_bot.replace("@", "").strip()
+        if clean_bot:
+            params.append(f"bot={clean_bot}")
+    if params:
         separator = "&" if "?" in url else "?"
-        url = f"{url}{separator}company_id={company_id}"
+        url = f"{url}{separator}{'&'.join(params)}"
     return url
 
 
-def get_client_reply_keyboard(company_id: Optional[str] = None) -> ReplyKeyboardMarkup:
+def get_client_reply_keyboard(company_id: Optional[str] = None, bot_username: Optional[str] = None) -> ReplyKeyboardMarkup:
     """
     Постоянная удобная клавиатура внизу экрана (Reply Keyboard).
     Клиенту не нужно ничего писать текстом — всё доступно в 1 клик!
     """
-    url = get_webapp_url(company_id)
+    url = get_webapp_url(company_id, bot_username)
     return ReplyKeyboardMarkup(
         keyboard=[
             [
@@ -85,9 +96,9 @@ def get_client_reply_keyboard(company_id: Optional[str] = None) -> ReplyKeyboard
     )
 
 
-def get_webapp_inline_keyboard(company_id: Optional[str] = None) -> InlineKeyboardMarkup:
+def get_webapp_inline_keyboard(company_id: Optional[str] = None, bot_username: Optional[str] = None) -> InlineKeyboardMarkup:
     """Инлайн-кнопки под приветствием"""
-    url = get_webapp_url(company_id)
+    url = get_webapp_url(company_id, bot_username)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -110,9 +121,9 @@ def get_webapp_inline_keyboard(company_id: Optional[str] = None) -> InlineKeyboa
     )
 
 
-def get_price_categories_keyboard(company_id: Optional[str] = None) -> InlineKeyboardMarkup:
+def get_price_categories_keyboard(company_id: Optional[str] = None, bot_username: Optional[str] = None) -> InlineKeyboardMarkup:
     """Инлайн-меню категорий сметы работ"""
-    url = get_webapp_url(company_id)
+    url = get_webapp_url(company_id, bot_username)
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
@@ -156,14 +167,27 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
             try:
                 shared_area = int(parts[1])
                 shared_class = parts[2]
+                if len(parts) >= 4:
+                    company_id = parts[3]
             except Exception:
                 pass
     elif arg:
         company_id = arg
 
+    # Получаем юзернейм бота для гарантированной передачи в Mini App
+    global CURRENT_BOT_USERNAME
+    bot_uname = CURRENT_BOT_USERNAME
+    if not bot_uname:
+        try:
+            bot_info = await bot.get_me()
+            bot_uname = bot_info.username or ""
+            CURRENT_BOT_USERNAME = bot_uname
+        except Exception:
+            pass
+
     # Настраиваем кнопку меню чата для быстрого открытия WebApp
     try:
-        menu_url = get_webapp_url(company_id)
+        menu_url = get_webapp_url(company_id, bot_uname)
         await bot.set_chat_menu_button(
             chat_id=message.chat.id,
             menu_button=MenuButtonWebApp(
@@ -181,7 +205,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
             "designer": "Дизайнерский",
         }
         t_name = tariff_names.get(shared_class, "Капитальный")
-        deep_app_url = f"{get_webapp_url(company_id)}&area={shared_area}&class={shared_class}&utm_source=shared_tma"
+        deep_app_url = f"{get_webapp_url(company_id, bot_uname)}&area={shared_area}&class={shared_class}&utm_source=shared_tma"
 
         share_greeting = (
             f"Здравствуйте, {message.from_user.first_name}!\n\n"
@@ -645,7 +669,13 @@ async def main():
     dp = Dispatcher()
     dp.include_router(router)
 
-    logger.info("Запуск бота Remont_Bot с кнопочным интерфейсом...")
+    global CURRENT_BOT_USERNAME
+    try:
+        me = await bot.get_me()
+        CURRENT_BOT_USERNAME = me.username or ""
+        logger.info(f"Запуск бота @{CURRENT_BOT_USERNAME} с кнопочным интерфейсом...")
+    except Exception as e:
+        logger.info("Запуск бота Remont_Bot с кнопочным интерфейсом...")
     try:
         await bot.delete_webhook(drop_pending_updates=True)
         await dp.start_polling(bot)
