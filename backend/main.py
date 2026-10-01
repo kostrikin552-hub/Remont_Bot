@@ -1633,25 +1633,21 @@ async def master_process_token(message: Message, state: FSMContext):
         except Exception as e:
             logger.debug(f"Не удалось отправить уведомление рефереру: {e}")
 
-    # 3. Настройка кнопки меню чата (setChatMenuButton)
-    bot_uname = bot_username or company_id
-    app_url = f"{MINI_APP_URL}?company_id={company_id}&bot={bot_uname}"
+    # 3. Сброс кнопки меню чата на стандартную (убираем веб-приложение со строки ввода, оставляем только удобную Reply-кнопку)
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             menu_btn_payload = {
                 "menu_button": {
-                    "type": "web_app",
-                    "text": "Рассчитать стоимость",
-                    "web_app": {"url": app_url},
+                    "type": "default"
                 }
             }
             menu_resp = await client.post(
                 f"https://api.telegram.org/bot{token_candidate}/setChatMenuButton",
                 json=menu_btn_payload,
             )
-            logger.info(f"setChatMenuButton результат: {menu_resp.status_code}")
+            logger.info(f"setChatMenuButton сброшен на default: {menu_resp.status_code}")
     except Exception as e:
-        logger.warning(f"Не удалось настроить setChatMenuButton: {e}")
+        logger.warning(f"Не удалось сбросить setChatMenuButton: {e}")
 
     # 4. Установка вебхука для клиентского бота
     webhook_url = f"{BASE_WEBHOOK_URL}/webhook/{company_id}"
@@ -1671,11 +1667,11 @@ async def master_process_token(message: Message, state: FSMContext):
     success_text = (
         f"🎉 <b>Поздравляем! Ваш личный бот готов к работе:</b> @{bot_username}\n\n"
         "✅ <b>Что настроено автоматически:</b>\n"
-        f"• Кнопка меню в боте открывает калькулятор с брендом «{company_name}»\n"
+        f"• В чате создана кнопка «📱 Рассчитать смету онлайн» с брендом «{company_name}»\n"
         f"• Город: {city}\n"
         "• Все заявки от ваших клиентов будут мгновенно приходить сюда!\n\n"
         f"👉 Перейдите в вашего бота @{bot_username} и нажмите кнопку "
-        "<b>«Рассчитать стоимость»</b>, чтобы протестировать калькулятор!"
+        "<b>«📱 Рассчитать смету онлайн»</b>, чтобы протестировать калькулятор!"
     )
     await checking_msg.edit_text(success_text)
     await checking_msg.answer(
@@ -1771,6 +1767,26 @@ async def lifespan(app: FastAPI):
             logger.info(f"Вебхук Мастер-бота установлен на {master_webhook_url}")
         except Exception as e:
             logger.warning(f"Не удалось установить вебхук для Мастер-бота: {e}")
+
+    # Фоновая очистка кнопок в строке ввода (MenuButton) у клиентских ботов
+    async def _reset_all_menu_buttons():
+        try:
+            comps = list(COMPANIES_DB.values())
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                for c in comps:
+                    t = c.get("bot_token")
+                    if t:
+                        try:
+                            await client.post(
+                                f"https://api.telegram.org/bot{t}/setChatMenuButton",
+                                json={"menu_button": {"type": "default"}},
+                            )
+                        except Exception:
+                            pass
+        except Exception:
+            pass
+
+    asyncio.create_task(_reset_all_menu_buttons())
 
     yield
 
@@ -2171,6 +2187,20 @@ async def client_bot_webhook(company_id: str, request: Request):
     lower_text = text.lower()
 
     if text.startswith("/start"):
+        # Удаляем кнопку со строки ввода (MenuButton), чтобы оставалась исключительно удобная Reply-кнопка
+        try:
+            async with httpx.AsyncClient(timeout=4.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/setChatMenuButton",
+                    json={"menu_button": {"type": "default"}},
+                )
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/setChatMenuButton",
+                    json={"chat_id": chat_id, "menu_button": {"type": "default"}},
+                )
+        except Exception:
+            pass
+
         greeting_text = (
             f"Здравствуйте!\n\n"
             f"🏠 <b>Добро пожаловать в сервис расчёта стоимости ремонта «{company_name}».</b>\n\n"

@@ -101,11 +101,16 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'miniapp' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('admin') === 'true' || urlParams.get('saas') === 'true' || urlParams.get('mode') === 'admin' || window.location.pathname.startsWith('/admin')) {
+      if (
+        urlParams.get('admin') === 'true' ||
+        urlParams.get('saas') === 'true' ||
+        urlParams.get('mode') === 'admin' ||
+        window.location.pathname.startsWith('/admin')
+      ) {
         return 'admin';
       }
     }
-    return 'admin'; // Default to SuperAdmin dashboard so user immediately sees the requested B2B platform
+    return 'miniapp'; // Default MUST ALWAYS be client renovation calculator
   });
 
   // Modals & UI
@@ -396,24 +401,12 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-[#f4f4f5] dark:bg-[#09090b] text-[#18181b] dark:text-[#f4f4f5] transition-colors pb-24 font-['Manrope',sans-serif]">
-      {/* Floating Quick Switcher to Admin Dashboard for demonstration */}
-      <div className="fixed top-2 right-2 z-40">
-        <button
-          onClick={() => setViewMode('admin')}
-          className="px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border border-emerald-500/40 text-emerald-400 text-[11px] font-bold shadow-lg hover:bg-zinc-900 transition-all flex items-center gap-1.5 cursor-pointer"
-        >
-          <LayoutDashboard className="w-3.5 h-3.5" />
-          <span>SuperAdmin</span>
-        </button>
-      </div>
-
       <div className="max-w-md mx-auto">
         {/* Header with Company Branding & Theme Switcher */}
         <Header
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
-          onOpenAdmin={() => setViewMode('admin')}
         />
 
         {/* Main Unified Calculator */}
