@@ -1267,19 +1267,10 @@ async def master_process_city(message: Message, state: FSMContext):
         "🔘 <b>Москва и МО</b> (высокий, ×1.3 к базовым ставкам)\n"
         "🔘 <b>Санкт-Петербург и миллионники</b> (средний, ×1.15)\n"
         "🔘 <b>Регионы РФ</b> (базовый эталон, ×1.0)\n\n"
-        "<i>Нажмите кнопку ниже или выберите вариант на клавиатуре:</i>"
+        "👇 <b>Нажмите нужный вариант на клавиатуре внизу экрана:</b>"
     )
 
-    # 1. Инлайн-кнопки прямо под сообщением
-    inline_kb = InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="🔘 Москва и МО (×1.3)", callback_data="preset_moscow")],
-            [InlineKeyboardButton(text="🔘 Санкт-Петербург и миллионники (×1.15)", callback_data="preset_spb")],
-            [InlineKeyboardButton(text="🔘 Регионы РФ (×1.0)", callback_data="preset_regions")],
-        ]
-    )
-
-    # 2. Полноразмерные Reply-кнопки внизу экрана для 100% срабатывания на любых устройствах
+    # Полноразмерная Reply-клавиатура внизу экрана (100% стабильная работа)
     reply_kb = ReplyKeyboardMarkup(
         keyboard=[
             [KeyboardButton(text="🔘 Москва и МО (×1.3)")],
@@ -1290,8 +1281,7 @@ async def master_process_city(message: Message, state: FSMContext):
         one_time_keyboard=True,
     )
 
-    await message.answer(text, reply_markup=inline_kb)
-    await message.answer("👇 Либо выберите кнопкой на клавиатуре:", reply_markup=reply_kb)
+    await message.answer(text, reply_markup=reply_kb, parse_mode=ParseMode.HTML)
 
 
 async def _apply_price_preset_step(
@@ -1301,7 +1291,7 @@ async def _apply_price_preset_step(
     cb: Optional[CallbackQuery] = None,
     msg: Optional[Message] = None,
 ):
-    """Единая логика фиксации ценового уровня (для Callback-кнопок, Reply-кнопок и текста)"""
+    """Единая логика фиксации ценового уровня (по Reply-кнопкам и тексту)"""
     clean_code = (data_code or "").strip().lower()
     mult = 1.0
     label = "Регионы РФ (базовый, ×1.0)"
@@ -1348,6 +1338,17 @@ async def _apply_price_preset_step(
         "💡 <i>Защита от ошибок:</i> вы можете скопировать всё сообщение от @BotFather целиком — система сама найдёт в нём токен!"
     )
 
+    if msg:
+        try:
+            # Убираем клавиатуру выбора уровня и подтверждаем выбор
+            await msg.answer(
+                f"✅ <b>Ценовой уровень выбран:</b> {label}",
+                reply_markup=ReplyKeyboardRemove(),
+                parse_mode=ParseMode.HTML,
+            )
+        except Exception as e:
+            logger.debug(f"Не удалось отправить подтверждение уровня: {e}")
+
     if cb:
         try:
             await cb.answer("✅ Уровень цен зафиксирован!")
@@ -1385,7 +1386,6 @@ async def _apply_price_preset_step(
     if not video_sent:
         try:
             if target_msg and hasattr(target_msg, "answer"):
-                # Убираем временную Reply-клавиатуру и показываем инлайн-кнопку BotFather
                 await target_msg.answer(
                     caption_text,
                     reply_markup=keyboard,
@@ -1411,7 +1411,7 @@ async def _apply_price_preset_step(
             plain_caption = (
                 f"✅ Ценовой уровень зафиксирован: {label}\n\n"
                 "Шаг 3 из 3: Подключение вашего личного бота\n\n"
-                "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n"
+                "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n\n"
                 "1. Перейдите в @BotFather по кнопке ниже.\n"
                 "2. Нажмите Start и отправьте команду /newbot.\n"
                 f"3. Введите название бота (например: Ремонт Квартир {city}).\n"
@@ -1427,20 +1427,6 @@ async def _apply_price_preset_step(
                 logger.error(f"Fallback отправка шага 3 не удалась: {e2}")
 
 
-@master_router.callback_query(StateFilter(RegisterCompanyFSM.price_level), F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
-@master_router.callback_query(StateFilter(RegisterCompanyFSM.price_level), F.data.startswith("preset_"))
-@master_router.callback_query(F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
-@master_router.callback_query(F.data.startswith("preset_"))
-async def master_cb_price_preset(cb: CallbackQuery, state: FSMContext):
-    """Фиксация ценового уровня по нажатию инлайн-кнопки"""
-    await _apply_price_preset_step(
-        user_id=cb.from_user.id,
-        data_code=cb.data or "",
-        state=state,
-        cb=cb,
-    )
-
-
 @master_router.message(StateFilter(RegisterCompanyFSM.price_level))
 async def master_msg_price_preset(message: Message, state: FSMContext):
     """Фиксация ценового уровня по нажатию Reply-кнопки или обычному текстовому ответу"""
@@ -1449,6 +1435,20 @@ async def master_msg_price_preset(message: Message, state: FSMContext):
         data_code=message.text or "",
         state=state,
         msg=message,
+    )
+
+
+@master_router.callback_query(StateFilter(RegisterCompanyFSM.price_level), F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
+@master_router.callback_query(StateFilter(RegisterCompanyFSM.price_level), F.data.startswith("preset_"))
+@master_router.callback_query(F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
+@master_router.callback_query(F.data.startswith("preset_"))
+async def master_cb_price_preset(cb: CallbackQuery, state: FSMContext):
+    """Fallback-обработчик для старых сообщений с инлайн-кнопками"""
+    await _apply_price_preset_step(
+        user_id=cb.from_user.id,
+        data_code=cb.data or "",
+        state=state,
+        cb=cb,
     )
 
 
