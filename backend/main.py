@@ -3,6 +3,7 @@
 и автоматического подключения ботов строительных компаний.
 """
 
+import asyncio
 import csv
 from datetime import datetime, timezone
 import html
@@ -46,6 +47,7 @@ try:
         DEFAULT_PLAN_ID,
         SUBSCRIPTION_PLANS,
         SUBSCRIPTION_PRICE,
+        SUBSCRIPTIONS_CACHE,
         TRIAL_LEADS_COUNT,
         activate_subscription_for_company,
         check_and_consume_lead_access,
@@ -56,12 +58,14 @@ try:
         mask_client_name,
         mask_client_phone,
         save_company_subscription,
+        save_local_subscriptions,
     )
 except ImportError:
     from monetization import (
         DEFAULT_PLAN_ID,
         SUBSCRIPTION_PLANS,
         SUBSCRIPTION_PRICE,
+        SUBSCRIPTIONS_CACHE,
         TRIAL_LEADS_COUNT,
         activate_subscription_for_company,
         check_and_consume_lead_access,
@@ -72,6 +76,7 @@ except ImportError:
         mask_client_name,
         mask_client_phone,
         save_company_subscription,
+        save_local_subscriptions,
     )
 
 try:
@@ -1771,7 +1776,7 @@ async def lifespan(app: FastAPI):
     # Фоновая очистка кнопок в строке ввода (MenuButton) у клиентских ботов
     async def _reset_all_menu_buttons():
         try:
-            comps = list(COMPANIES_DB.values())
+            comps = list(COMPANIES_CACHE.values())
             async with httpx.AsyncClient(timeout=8.0) as client:
                 for c in comps:
                     t = c.get("bot_token")
