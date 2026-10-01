@@ -32,7 +32,8 @@ import {
   DEMO_COMPANIES,
   DEFAULT_COMPANY_ID,
 } from './lib/supabase';
-import { ChevronDown, SearchCheck, ArrowRight } from 'lucide-react';
+import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
+import { ChevronDown, SearchCheck, ArrowRight, LayoutDashboard, Calculator as CalcIcon } from 'lucide-react';
 
 const FAQ_ITEMS = [
   {
@@ -95,6 +96,17 @@ export default function App() {
     getCompanyEstimateItems(company.id, pricing)
   );
   const [excludedItemIds, setExcludedItemIds] = useState<string[]>([]);
+
+  // View mode: 'miniapp' (client calculator) or 'admin' (RemontSaaS SuperAdmin Dashboard)
+  const [viewMode, setViewMode] = useState<'miniapp' | 'admin'>(() => {
+    if (typeof window !== 'undefined') {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('admin') === 'true' || urlParams.get('saas') === 'true' || urlParams.get('mode') === 'admin' || window.location.pathname.startsWith('/admin')) {
+        return 'admin';
+      }
+    }
+    return 'admin'; // Default to SuperAdmin dashboard so user immediately sees the requested B2B platform
+  });
 
   // Modals & UI
   const [isBookingOpen, setIsBookingOpen] = useState(false);
@@ -371,14 +383,37 @@ export default function App() {
     return <AppSkeleton />;
   }
 
+  // If in SuperAdmin dashboard mode, render the full-scale B2B SaaS platform
+  if (viewMode === 'admin') {
+    return (
+      <SuperAdminDashboard
+        onSwitchToMiniApp={() => setViewMode('miniapp')}
+        isDark={isDark}
+        onToggleTheme={handleToggleTheme}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#f4f4f5] dark:bg-[#09090b] text-[#18181b] dark:text-[#f4f4f5] transition-colors pb-24 font-['Manrope',sans-serif]">
+      {/* Floating Quick Switcher to Admin Dashboard for demonstration */}
+      <div className="fixed top-2 right-2 z-40">
+        <button
+          onClick={() => setViewMode('admin')}
+          className="px-3 py-1.5 rounded-full bg-zinc-950/80 backdrop-blur-md border border-emerald-500/40 text-emerald-400 text-[11px] font-bold shadow-lg hover:bg-zinc-900 transition-all flex items-center gap-1.5 cursor-pointer"
+        >
+          <LayoutDashboard className="w-3.5 h-3.5" />
+          <span>SuperAdmin</span>
+        </button>
+      </div>
+
       <div className="max-w-md mx-auto">
         {/* Header with Company Branding & Theme Switcher */}
         <Header
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
+          onOpenAdmin={() => setViewMode('admin')}
         />
 
         {/* Main Unified Calculator */}

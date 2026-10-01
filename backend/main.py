@@ -1259,36 +1259,71 @@ async def master_process_city(message: Message, state: FSMContext):
     await state.update_data(city=city)
     await state.set_state(RegisterCompanyFSM.price_level)
 
+    safe_city = html.escape(city)
     text = (
         f"📍 <b>Шаг 2.5: Ценовой уровень вашей компании</b>\n\n"
-        f"Город: <b>{city}</b>\n\n"
+        f"Город: <b>{safe_city}</b>\n\n"
         "Укажите ценовой уровень для автоматической калибровки смет:\n\n"
         "🔘 <b>Москва и МО</b> (высокий, ×1.3 к базовым ставкам)\n"
         "🔘 <b>Санкт-Петербург и миллионники</b> (средний, ×1.15)\n"
-        "🔘 <b>Регионы РФ</b> (базовый эталон, ×1.0)"
+        "🔘 <b>Регионы РФ</b> (базовый эталон, ×1.0)\n\n"
+        "<i>Нажмите кнопку ниже или выберите вариант на клавиатуре:</i>"
     )
-    kb = InlineKeyboardMarkup(
+
+    # 1. Инлайн-кнопки прямо под сообщением
+    inline_kb = InlineKeyboardMarkup(
         inline_keyboard=[
             [InlineKeyboardButton(text="🔘 Москва и МО (×1.3)", callback_data="preset_moscow")],
             [InlineKeyboardButton(text="🔘 Санкт-Петербург и миллионники (×1.15)", callback_data="preset_spb")],
             [InlineKeyboardButton(text="🔘 Регионы РФ (×1.0)", callback_data="preset_regions")],
         ]
     )
-    await message.answer(text, reply_markup=kb)
+
+    # 2. Полноразмерные Reply-кнопки внизу экрана для 100% срабатывания на любых устройствах
+    reply_kb = ReplyKeyboardMarkup(
+        keyboard=[
+            [KeyboardButton(text="🔘 Москва и МО (×1.3)")],
+            [KeyboardButton(text="🔘 Санкт-Петербург и миллионники (×1.15)")],
+            [KeyboardButton(text="🔘 Регионы РФ (×1.0)")],
+        ],
+        resize_keyboard=True,
+        one_time_keyboard=True,
+    )
+
+    await message.answer(text, reply_markup=inline_kb)
+    await message.answer("👇 Либо выберите кнопкой на клавиатуре:", reply_markup=reply_kb)
 
 
-@master_router.callback_query(F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
-async def master_cb_price_preset(cb: CallbackQuery, state: FSMContext):
-    """Фиксация ценового уровня и переход к шагу 3 (Токен @BotFather)"""
-    await cb.answer()
+async def _apply_price_preset_step(
+    user_id: int,
+    data_code: str,
+    state: FSMContext,
+    cb: Optional[CallbackQuery] = None,
+    msg: Optional[Message] = None,
+):
+    """Единая логика фиксации ценового уровня (для Callback-кнопок, Reply-кнопок и текста)"""
+    clean_code = (data_code or "").strip().lower()
     mult = 1.0
     label = "Регионы РФ (базовый, ×1.0)"
-    if cb.data == "preset_moscow":
+
+    if any(k in clean_code for k in ["moscow", "москв", "1.3", "высокий"]):
         mult = 1.3
         label = "Москва и МО (высокий, ×1.3)"
-    elif cb.data == "preset_spb":
+    elif any(k in clean_code for k in ["spb", "петербург", "питер", "спб", "1.15", "средний", "миллион"]):
         mult = 1.15
         label = "Санкт-Петербург и миллионники (средний, ×1.15)"
+    elif any(k in clean_code for k in ["region", "регион", "1.0", "базов", "рф"]):
+        mult = 1.0
+        label = "Регионы РФ (базовый, ×1.0)"
+    elif clean_code in ["1", "1)", "1."]:
+        mult = 1.3
+        label = "Москва и МО (высокий, ×1.3)"
+    elif clean_code in ["2", "2)", "2."]:
+        mult = 1.15
+        label = "Санкт-Петербург и миллионники (средний, ×1.15)"
+    elif clean_code in ["3", "3)", "3."]:
+        mult = 1.0
+        label = "Регионы РФ (базовый, ×1.0)"
 
     await state.update_data(price_multiplier=mult, price_level_name=label)
     await state.set_state(RegisterCompanyFSM.bot_token)
@@ -1296,7 +1331,9 @@ async def master_cb_price_preset(cb: CallbackQuery, state: FSMContext):
     data = await state.get_data()
     city = data.get("city", "Москва")
     company_name = data.get("company_name", "Ремонт")
-    slug_suggestion = re.sub(r"[^a-zA-Z0-9_]", "", company_name.lower().replace(" ", "_")) or "my_remont"
+    safe_city = html.escape(str(city))
+    safe_company = html.escape(str(company_name))
+    slug_suggestion = re.sub(r"[^a-zA-Z0-9_]", "", str(company_name).lower().replace(" ", "_")) or "my_remont"
 
     keyboard = get_botfather_guide_keyboard()
     caption_text = (
@@ -1305,27 +1342,114 @@ async def master_cb_price_preset(cb: CallbackQuery, state: FSMContext):
         "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n\n"
         "1. Перейдите в @BotFather по кнопке ниже.\n"
         "2. Нажмите <b>Start</b> и отправьте команду <code>/newbot</code>.\n"
-        f"3. Введите название бота (например: <i>Ремонт Квартир {city}</i>).\n"
+        f"3. Введите название бота (например: <i>Ремонт Квартир {safe_city}</i>).\n"
         f"4. Введите юзернейм на латинице с окончанием на <code>bot</code> (например: <i>{slug_suggestion}_bot</i>).\n"
         "5. Скопируйте длинный ключ (<b>HTTP API Token</b>) и отправьте его сюда.\n\n"
         "💡 <i>Защита от ошибок:</i> вы можете скопировать всё сообщение от @BotFather целиком — система сама найдёт в нём токен!"
     )
 
+    if cb:
+        try:
+            await cb.answer("✅ Уровень цен зафиксирован!")
+        except Exception:
+            pass
+
+        try:
+            if cb.message and hasattr(cb.message, "edit_text"):
+                await cb.message.edit_text(
+                    f"📍 <b>Шаг 2.5: Ценовой уровень компании</b>\n\n"
+                    f"Город: <b>{safe_city}</b>\n\n"
+                    f"✅ <b>Зафиксирован уровень:</b> {label}",
+                    parse_mode=ParseMode.HTML,
+                    reply_markup=None,
+                )
+        except Exception as e:
+            logger.debug(f"Не удалось отредактировать сообщение шага 2.5: {e}")
+
     guide_video_id = BOTFATHER_GUIDE_VIDEO_ID or os.getenv("BOTFATHER_GUIDE_VIDEO_ID", "")
     video_sent = False
-    if guide_video_id and master_bot:
+    target_msg = (cb.message if cb and cb.message and hasattr(cb.message, "answer_video") else None) or msg
+
+    if guide_video_id and target_msg and master_bot:
         try:
-            await cb.message.answer_video(
+            await target_msg.answer_video(
                 video=guide_video_id,
                 caption=caption_text,
                 reply_markup=keyboard,
+                parse_mode=ParseMode.HTML,
             )
             video_sent = True
         except Exception as e:
             logger.warning(f"Не удалось отправить видео по file_id '{guide_video_id}': {e}")
 
     if not video_sent:
-        await cb.message.answer(caption_text, reply_markup=keyboard)
+        try:
+            if target_msg and hasattr(target_msg, "answer"):
+                # Убираем временную Reply-клавиатуру и показываем инлайн-кнопку BotFather
+                await target_msg.answer(
+                    caption_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML,
+                )
+            elif master_bot:
+                await master_bot.send_message(
+                    chat_id=user_id,
+                    text=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML,
+                )
+            elif cb and cb.bot:
+                await cb.bot.send_message(
+                    chat_id=user_id,
+                    text=caption_text,
+                    reply_markup=keyboard,
+                    parse_mode=ParseMode.HTML,
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки сообщения шага 3 с HTML: {e}")
+            # Надежный fallback без HTML-тегов
+            plain_caption = (
+                f"✅ Ценовой уровень зафиксирован: {label}\n\n"
+                "Шаг 3 из 3: Подключение вашего личного бота\n\n"
+                "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n"
+                "1. Перейдите в @BotFather по кнопке ниже.\n"
+                "2. Нажмите Start и отправьте команду /newbot.\n"
+                f"3. Введите название бота (например: Ремонт Квартир {city}).\n"
+                f"4. Введите юзернейм на латинице с окончанием на bot (например: {slug_suggestion}_bot).\n"
+                "5. Скопируйте длинный ключ (HTTP API Token) и отправьте его сюда."
+            )
+            try:
+                if target_msg and hasattr(target_msg, "answer"):
+                    await target_msg.answer(plain_caption, reply_markup=keyboard)
+                elif master_bot:
+                    await master_bot.send_message(chat_id=user_id, text=plain_caption, reply_markup=keyboard)
+            except Exception as e2:
+                logger.error(f"Fallback отправка шага 3 не удалась: {e2}")
+
+
+@master_router.callback_query(StateFilter(RegisterCompanyFSM.price_level), F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
+@master_router.callback_query(StateFilter(RegisterCompanyFSM.price_level), F.data.startswith("preset_"))
+@master_router.callback_query(F.data.in_(["preset_moscow", "preset_spb", "preset_regions"]))
+@master_router.callback_query(F.data.startswith("preset_"))
+async def master_cb_price_preset(cb: CallbackQuery, state: FSMContext):
+    """Фиксация ценового уровня по нажатию инлайн-кнопки"""
+    await _apply_price_preset_step(
+        user_id=cb.from_user.id,
+        data_code=cb.data or "",
+        state=state,
+        cb=cb,
+    )
+
+
+@master_router.message(StateFilter(RegisterCompanyFSM.price_level))
+async def master_msg_price_preset(message: Message, state: FSMContext):
+    """Фиксация ценового уровня по нажатию Reply-кнопки или обычному текстовому ответу"""
+    await _apply_price_preset_step(
+        user_id=message.from_user.id,
+        data_code=message.text or "",
+        state=state,
+        msg=message,
+    )
 
 
 @master_router.message(StateFilter(RegisterCompanyFSM.bot_token), F.text)
@@ -2008,6 +2132,23 @@ async def client_bot_webhook(company_id: str, request: Request):
                 f"📞 <b>Прямой телефон компании:</b> <code>{company_phone}</code>\n"
                 "Дежурный инженер ответит на все вопросы с 09:00 до 21:00 без выходных."
             )
+        elif cb_data.startswith("preset_") or cb_data in ["preset_moscow", "preset_spb", "preset_regions"]:
+            mult_label = "Регионы РФ (базовый, ×1.0)"
+            if "moscow" in cb_data:
+                mult_label = "Москва и МО (высокий, ×1.3)"
+            elif "spb" in cb_data:
+                mult_label = "Санкт-Петербург и миллионники (средний, ×1.15)"
+
+            response_text = (
+                f"✅ <b>Ценовой уровень зафиксирован:</b> {mult_label}\n\n"
+                "📍 <b>Шаг 3 из 3: Подключение личного бота</b>\n\n"
+                "Чтобы подключить личного бота, перейдите в @BotFather по кнопке ниже и пришлите полученный токен сюда:"
+            )
+            cat_back_kb = {
+                "inline_keyboard": [
+                    [{"text": "🤖 Открыть @BotFather", "url": "https://t.me/BotFather"}]
+                ]
+            }
 
         if response_text and cb_msg_id:
             try:

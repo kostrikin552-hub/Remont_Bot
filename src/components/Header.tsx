@@ -8,12 +8,14 @@ interface HeaderProps {
   isDark: boolean;
   onToggleTheme: () => void;
   company: CompanyConfig;
+  onOpenAdmin?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
   isDark,
   onToggleTheme,
   company,
+  onOpenAdmin,
 }) => {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
 
@@ -57,21 +59,37 @@ export const Header: React.FC<HeaderProps> = ({
           </div>
         </div>
 
-        <button
-          type="button"
-          onClick={() => {
-            triggerHaptic('light');
-            onToggleTheme();
-          }}
-          aria-label="Сменить тему"
-          className="w-8 h-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center transition shrink-0"
-        >
-          {isDark ? (
-            <Sun className="w-4 h-4 text-amber-500" />
-          ) : (
-            <Moon className="w-4 h-4 text-zinc-800" />
+        <div className="flex items-center gap-1.5">
+          {onOpenAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenAdmin();
+              }}
+              title="Открыть SuperAdmin Dashboard"
+              className="px-2 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1 transition"
+            >
+              <span>Admin</span>
+            </button>
           )}
-        </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onToggleTheme();
+            }}
+            aria-label="Сменить тему"
+            className="w-8 h-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center transition shrink-0"
+          >
+            {isDark ? (
+              <Sun className="w-4 h-4 text-amber-500" />
+            ) : (
+              <Moon className="w-4 h-4 text-zinc-800" />
+            )}
+          </button>
+        </div>
       </header>
 
       <AvatarDownloadModal
