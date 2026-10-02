@@ -189,6 +189,8 @@ def find_company(identifier: str) -> Optional[Dict[str, Any]]:
                 comp["status_text"] = comp.get("status_text", "Работаем без предоплаты")
                 comp["badge_text"] = comp.get("badge_text", "PRO")
                 comp["logo_letter"] = comp.get("logo_letter", (comp.get("name") or "Р")[0].upper())
+                comp["admin_chat_id"] = comp.get("admin_chat_id")
+                comp["owner_id"] = comp.get("admin_chat_id") or comp.get("owner_id")
 
                 COMPANIES_CACHE[c_uuid] = comp
                 if c_uname:
@@ -634,7 +636,8 @@ async def master_menu_pricing(message: Message):
         "<i>Измените цены под свой регион в 1 клик:</i>"
     )
 
-    pro_url = f"{MINI_APP_URL}?company_id={comp_id}&bot={uname}&pro_mode=true"
+    owner_param = company.get("admin_chat_id") or message.from_user.id
+    pro_url = f"{MINI_APP_URL}?company_id={comp_id}&bot={uname}&pro_mode=true&owner_id={owner_param}"
 
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -668,7 +671,8 @@ async def master_cb_edit_prices(cb: CallbackQuery):
     company = find_company_for_admin(cb.from_user.id)
     comp_id = (company.get("id") if company else None) or "cuberlife_bot"
     uname = (company.get("bot_username") if company else None) or "moscow_remont_bot"
-    pro_url = f"{MINI_APP_URL}?company_id={comp_id}&bot={uname}&pro_mode=true"
+    owner_param = (company.get("admin_chat_id") if company else None) or cb.from_user.id
+    pro_url = f"{MINI_APP_URL}?company_id={comp_id}&bot={uname}&pro_mode=true&owner_id={owner_param}"
 
     text = (
         "✏️ <b>Быстрая калибровка расценок:</b>\n\n"
@@ -2400,9 +2404,13 @@ async def get_company_endpoint(company_id: str):
             "logo_letter": "Р",
         }
 
+    company_payload = dict(company)
+    company_payload["owner_id"] = company.get("admin_chat_id") or company.get("owner_id")
+    company_payload["admin_chat_id"] = company.get("admin_chat_id")
+
     return {
         "success": True,
-        "company": company,
+        "company": company_payload,
         "pricing": pricing,
     }
 

@@ -207,6 +207,8 @@ export async function fetchCompanyData(companyId: string): Promise<{
             logoLetter: c.logo_letter || (c.name ? c.name[0].toUpperCase() : 'Р'),
             badgeText: c.badge_text || 'PRO',
             botUsername: resolvedBot,
+            ownerId: c.admin_chat_id || c.owner_id || c.adminChatId,
+            adminChatId: c.admin_chat_id || c.adminChatId,
           },
           pricing: {
             cosmeticPrice: Number(p.price_cosmetic ?? p.cosmetic_price ?? defaultPricing.cosmeticPrice),
@@ -260,6 +262,8 @@ export async function fetchCompanyData(companyId: string): Promise<{
             logoLetter: compData.logo_letter || compData.name?.[0] || 'Р',
             badgeText: compData.badge_text || 'PRO',
             botUsername: resolvedBot,
+            ownerId: compData.admin_chat_id || compData.owner_id,
+            adminChatId: compData.admin_chat_id,
           },
           pricing: {
             cosmeticPrice: Number(p.price_cosmetic ?? p.cosmetic_price ?? defaultPricing.cosmeticPrice),

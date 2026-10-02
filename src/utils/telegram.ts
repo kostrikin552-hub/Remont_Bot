@@ -274,3 +274,49 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Проверка прав владельца бота / администратора компании:
+ * Режим калибровки цен доступен ИСКЛЮЧИТЕЛЬНО владельцу бота!
+ * Обычные пользователи и клиенты НИКОГДА не получают права админа.
+ */
+export function isBotOwner(company?: {
+  ownerId?: string | number;
+  adminChatId?: string | number;
+  id?: string;
+}): boolean {
+  if (typeof window === 'undefined') return false;
+
+  const currentTgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+  const ownerId = company?.ownerId || company?.adminChatId;
+
+  // 1. Если запуск внутри Telegram:
+  // Строгая сверка Telegram ID текущего пользователя с ID владельца бота
+  if (currentTgUserId && ownerId) {
+    if (String(currentTgUserId) === String(ownerId)) {
+      return true;
+    }
+    // Если текущий ID в Telegram не совпадает с владельцем — доступ КАТЕГОРИЧЕСКИ ЗАПРЕЩЁН
+    return false;
+  }
+
+  // 2. Если запуск по защищенной ссылке владельца из Мастер-Бота (сверка ID владельца)
+  const urlParams = new URLSearchParams(window.location.search);
+  const passedOwnerId = urlParams.get('owner_id') || urlParams.get('admin_id');
+  if (passedOwnerId && ownerId && String(passedOwnerId) === String(ownerId)) {
+    if (currentTgUserId && String(currentTgUserId) !== String(ownerId)) {
+      return false;
+    }
+    return true;
+  }
+
+  // 3. Защищенный токен владельца компании
+  const ownerToken = urlParams.get('owner_token') || urlParams.get('token');
+  if (ownerToken && company?.id && ownerToken === `owner_${company.id}`) {
+    return true;
+  }
+
+  // По умолчанию для всех обычных пользователей: доступ закрыт
+  return false;
+}
+

@@ -56,6 +56,8 @@ export interface CompanyConfig {
   logoLetter: string;
   badgeText?: string;
   botUsername?: string;
+  ownerId?: string | number;
+  adminChatId?: string | number;
 }
 
 export interface PricingRules {

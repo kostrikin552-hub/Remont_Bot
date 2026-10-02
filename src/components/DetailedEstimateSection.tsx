@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Copy,
   Check,
@@ -23,7 +23,7 @@ import {
 import {
   formatTextEstimate,
 } from '../utils/estimates';
-import { formatCurrency, triggerHaptic, getDetectedBotUsername } from '../utils/telegram';
+import { formatCurrency, triggerHaptic, getDetectedBotUsername, isBotOwner } from '../utils/telegram';
 
 interface DetailedEstimateSectionProps {
   result: CalculationResult;
@@ -64,13 +64,24 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 }) => {
   const [copied, setCopied] = useState(false);
   const [collapsedCategories, setCollapsedCategories] = useState<Record<string, boolean>>({});
-  const [isEditorOpen, setIsEditorOpen] = useState(() => {
+
+  // Проверка прав владельца бота (для обычных клиентов калибровка цен строго закрыта)
+  const isOwner = useMemo(() => isBotOwner(company), [company]);
+  const [isEditorOpen, setIsEditorOpen] = useState(false);
+
+  useEffect(() => {
+    if (!isOwner) {
+      setIsEditorOpen(false);
+      return;
+    }
     if (typeof window !== 'undefined') {
       const p = new URLSearchParams(window.location.search);
-      return p.get('pro_mode') === 'true' || p.get('pro_mode') === '1' || p.get('admin') === '1';
+      if (p.get('pro_mode') === 'true' || p.get('pro_mode') === '1' || p.get('admin') === '1') {
+        setIsEditorOpen(true);
+      }
     }
-    return false;
-  });
+  }, [isOwner]);
+
   const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [editPriceVal, setEditPriceVal] = useState<string>('');
   const [saveSuccessToast, setSaveSuccessToast] = useState(false);
@@ -221,22 +232,25 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
               <span className="text-[11px]">PDF</span>
             </button>
 
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('light');
-                setIsEditorOpen(!isEditorOpen);
-              }}
-              className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition active:scale-95 ${
-                isEditorOpen
-                  ? 'bg-amber-500 text-white shadow-xs'
-                  : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200'
-              }`}
-              title="Admin Pro Mode: точечная калибровка расценок компании"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5" />
-              <span className="text-[11px]">✏️ Режим цен</span>
-            </button>
+            {/* Кнопка «✏️ Режим цен» видна ИСКЛЮЧИТЕЛЬНО владельцу бота */}
+            {isOwner && (
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsEditorOpen(!isEditorOpen);
+                }}
+                className={`py-1.5 px-2.5 rounded-lg text-xs font-bold flex items-center gap-1 transition active:scale-95 ${
+                  isEditorOpen
+                    ? 'bg-amber-500 text-white shadow-xs'
+                    : 'bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200'
+                }`}
+                title="Режим владельца: точечная калибровка расценок компании"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span className="text-[11px]">✏️ Режим цен</span>
+              </button>
+            )}
           </div>
         </div>
 
@@ -259,8 +273,8 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
           </div>
         )}
 
-        {/* Pro Mode Banner */}
-        {isEditorOpen && (
+        {/* Pro Mode Banner - строго только для владельца бота */}
+        {isOwner && isEditorOpen && (
           <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-xl text-xs space-y-2 animate-in fade-in">
             <div className="flex items-start justify-between gap-2">
               <div>
@@ -430,7 +444,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
                               </strong>
                             </span>
                             <span>·</span>
-                            {isEditingThis ? (
+                            {isOwner && isEditingThis ? (
                               <div
                                 className="flex items-center gap-1 my-0.5"
                                 onClick={(e) => e.stopPropagation()}
@@ -452,9 +466,9 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
                               </div>
                             ) : (
                               <span
-                                onClick={() => isEditorOpen && handleStartEditPrice(ci.item)}
+                                onClick={() => isOwner && isEditorOpen && handleStartEditPrice(ci.item)}
                                 className={`${
-                                  isEditorOpen
+                                  isOwner && isEditorOpen
                                     ? 'cursor-pointer px-1.5 py-0.5 rounded bg-amber-500/15 text-amber-700 dark:text-amber-300 font-bold border border-amber-500/30 hover:bg-amber-500/25 transition'
                                     : ''
                                 }`}
@@ -463,7 +477,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
                                 <strong className="text-zinc-800 dark:text-zinc-200 font-semibold">
                                   {formatCurrency(ci.item.unitPrice)} / {ci.item.unit}
                                 </strong>
-                                {isEditorOpen && ' ✏️'}
+                                {isOwner && isEditorOpen && ' ✏️'}
                               </span>
                             )}
                           </div>
