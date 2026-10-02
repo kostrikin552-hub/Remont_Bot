@@ -892,146 +892,209 @@ async def master_menu_referral_btn(message: Message):
 # ---------------------------------------------------------------------------
 # 6. Кнопка «🆘 Обучение и помощь» (Разгрузка поддержки)
 # ---------------------------------------------------------------------------
-@master_router.message(F.text == "🆘 Обучение и помощь")
-@master_router.message(Command("help"))
-@master_router.message(Command("support"))
-async def master_menu_help(message: Message):
-    """База знаний, видео-уроки и прямой контакт основателя"""
-    text = (
-        "🆘 <b>БАЗА ЗНАНИЙ И ИНСТРУКЦИИ</b>\n\n"
-        "📖 <b>Инструкция простыми словами:</b> как устроен бот и калькулятор\n"
-        "🎬 <b>Видео:</b> Как подключить бота за 2 минуты\n"
-        "📈 <b>Авито:</b> Как получать от 3 заявок в день\n"
-        "📄 <b>Шаблон:</b> Договор подряда по нашей смете\n\n"
-        "<i>Выберите нужный раздел или напишите в поддержку:</i>"
+def get_help_main_text() -> str:
+    return (
+        "🆘 <b>БАЗА ЗНАНИЙ И ПРОСТЫЕ ИНСТРУКЦИИ</b>\n\n"
+        "Здесь простыми словами объяснено, как устроен ваш бот, как привлекать заказчиков и зарабатывать больше на ремонтах:\n\n"
+        "• <b>📖 Как всё устроено:</b> как бот и калькулятор считают сметы и приносят заявки\n"
+        "• <b>📈 3+ заявки в день с Авито:</b> готовая схема и текст объявления для потока клиентов\n"
+        "• <b>📄 Договор по смете:</b> как защитить себя от споров и не остаться без оплаты\n"
+        "• <b>⚙️ Настройка цен:</b> как в 1 клик изменить расценки под свою бригаду\n\n"
+        "<i>Нажмите на нужный раздел ниже:</i>"
     )
 
-    kb = InlineKeyboardMarkup(
+
+def get_help_inline_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
-                    text="📖 Как всё устроено (Простая инструкция)",
+                    text="📖 Как всё устроено (на пальцах)",
                     callback_data="master_help_manual",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="🎬 Видео: Настройка за 2 минуты",
-                    callback_data="master_help_video",
-                )
-            ],
-            [
-                InlineKeyboardButton(
-                    text="📈 Инструкция: 3+ заявок в день с Авито",
+                    text="📈 Как получать 3+ заявки в день с Авито",
                     callback_data="master_help_avito",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="📄 Шаблон договора по смете",
+                    text="📄 Договор по смете и защита от споров",
                     callback_data="master_help_contract",
                 )
             ],
             [
                 InlineKeyboardButton(
-                    text="💬 Написать основателю платформы",
+                    text="⚙️ Как настроить свои цены",
+                    callback_data="master_help_pricing",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Написать создателю платформы",
                     url="https://t.me/kostrikin552",
                 )
             ],
         ]
     )
-    await message.answer(text, reply_markup=kb)
+
+
+def get_help_back_keyboard() -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад в меню помощи",
+                    callback_data="master_help_back",
+                )
+            ]
+        ]
+    )
+
+
+def get_help_manual_text(uname: str) -> str:
+    return (
+        "📖 <b>КАК ВСЁ УСТРОЕНО И РАБОТАЕТ (НА ПАЛЬЦАХ)</b>\n\n"
+        "Вся система создана для того, чтобы вам больше не приходилось часами считать сметы вручную на коленке и спорить с заказчиками о ценах.\n\n"
+        f"1️⃣ <b>Ваш личный бот (@{uname})</b>\n"
+        "• Это ссылка, которую вы даёте клиентам в профиле на Авито, в соцсетях или отправляете в ответ на звонок.\n"
+        "• Заказчик заходит в бота и нажимает: <b>«📱 Рассчитать смету онлайн»</b>.\n"
+        "• Прямо внутри Telegram открывается удобный и наглядный калькулятор.\n\n"
+        "2️⃣ <b>Что делает заказчик в калькуляторе:</b>\n"
+        "• Двигает ползунок площади своей квартиры (например, 54 м²).\n"
+        "• Выбирает тариф: <i>Косметический, Капитальный или Дизайнерский</i>.\n"
+        "• Видит честный расчет по видам работ: штукатурка, стяжка, электрика, сантехника, плитка, обои.\n"
+        "• Может сам снять галочки с тех работ, которые ему не нужны (например, если потолки делает знакомый) — смета пересчитается на лету, а клиент увидит свою экономию.\n\n"
+        "3️⃣ <b>Как вы получаете готовую заявку:</b>\n"
+        "• Клиент нажимает <b>«Зафиксировать смету»</b>, указывает имя, телефон и адрес.\n"
+        "• <b>Вы мгновенно получаете карточку заказа</b> в Telegram со всеми параметрами квартиры.\n"
+        "• К карточке сразу прикреплен <b>подробный PDF-файл официальной сметы</b> со всеми суммами и объемами.\n"
+        "• Под сообщением есть кнопка <b>«💬 Написать клиенту в Telegram»</b> — нажимаете и сразу договариваетесь о времени замера!\n\n"
+        "Всё работает автоматически 24/7 без вашего участия."
+    )
+
+
+def get_help_avito_text(uname: str) -> str:
+    return (
+        "📈 <b>КАК ПОЛУЧАТЬ ОТ 3 ЗАЯВОК В ДЕНЬ С АВИТО</b>\n\n"
+        "Большинство строителей на Авито пишут одно и то же: «Делаем ремонт качественно, русские бригады». Клиенты в это уже не верят.\n\n"
+        "Вот проверенная схема, которая стабильно приносит горячих заказчиков:\n\n"
+        "1️⃣ <b>Цепляющий заголовок объявления:</b>\n"
+        "<i>«Капитальный ремонт квартир под ключ + точная смета в Telegram за 1 минуту»</i>\n\n"
+        "2️⃣ <b>Второе фото в галерее:</b>\n"
+        "Сделайте скриншот вашего калькулятора с крупной надписью:\n"
+        "<i>«Рассчитайте точную стоимость ремонта своей квартиры за 60 секунд без звонков и навязывания услуг»</i>. Люди обожают сначала прицениться сами.\n\n"
+        "3️⃣ <b>Первая строчка в тексте объявления:</b>\n"
+        f"<i>«👉 Хотите узнать точную смету прямо сейчас? Рассчитайте в нашем боте: https://t.me/{uname}»</i>\n\n"
+        "4️⃣ <b>Главный крючок — бесплатный лазерный замер (0 ₽):</b>\n"
+        "В конце объявления напишите:\n"
+        "<i>«При фиксации сметы в боте — выезд инженера с лазерным дальномером и 3D-план розеток БЕСПЛАТНО»</i>.\n\n"
+        "Клиенты считают смету, оставляют телефон, и к вам приходит уже прогретый заказчик, который согласен с вашим уровнем цен!"
+    )
+
+
+def get_help_contract_text() -> str:
+    return (
+        "📄 <b>КАК ДОГОВОР ПО СМЕТЕ ЗАЩИЩАЕТ ВАС И ВАШИ ДЕНЬГИ</b>\n\n"
+        "Главный страх заказчика — что прораб назовет одну цену, а в конце потребует в два раза больше. Главный страх мастера — что заказчик придерется и откажется платить.\n\n"
+        "Вот 3 простых правила, которые снимают любые конфликты:\n\n"
+        "1️⃣ <b>Смета из бота — это Приложение №1 к договору:</b>\n"
+        "Распечатайте PDF-файл, который прислал бот, и прикрепите к договору. В тексте укажите: <i>«Стоимость указанных видов работ является твердой и не подлежит изменению в одностороннем порядке (ст. 709 ГК РФ)»</i>. Это сразу вызывает доверие.\n\n"
+        "2️⃣ <b>Оплата строго по этапам (без предоплаты за работу):</b>\n"
+        "Разбейте весь ремонт на 3–4 понятных этапа:\n"
+        "• <i>Этап 1:</i> Демонтаж и перегородки\n"
+        "• <i>Этап 2:</i> Штукатурка, стяжка, проводка и трубы\n"
+        "• <i>Этап 3:</i> Плитка, обои, ламинат, двери\n"
+        "Заказчик оплачивает этап только после подписания акта приема. За материалы можно брать аванс по чекам.\n\n"
+        "3️⃣ <b>Любые новые пожелания — только через доп. соглашение:</b>\n"
+        "Если клиент просит: «А добавьте еще подсветку и перенесите розетки», вы открываете бота, рассчитываете доп. работы и подписываете короткое доп. соглашение. Никаких споров в конце объекта!"
+    )
+
+
+def get_help_pricing_text() -> str:
+    return (
+        "⚙️ <b>КАК БЫСТРО НАСТРОИТЬ СВОИ ЦЕНЫ В БОТЕ</b>\n\n"
+        "В боте изначально заложены честные рыночные расценки вашего города. Вы можете в любой момент изменить их под свою бригаду:\n\n"
+        "1️⃣ <b>Быстрое изменение всех цен сразу:</b>\n"
+        "• В главном меню нажмите кнопку <b>«⚙️ Мои расценки»</b>.\n"
+        "• Выберите <b>«📈 Повысить на 10%»</b>, если работаете в более высоком сегменте, или <b>«📉 Снизить на 10%»</b> для быстрого набора заказов.\n\n"
+        "2️⃣ <b>Отключение ненужных услуг тумблером:</b>\n"
+        "• В меню расценок есть переключатели отдельных услуг.\n"
+        "• Если вы не делаете дизайн-проекты или клиент сам закупает материалы — выключите их в 1 клик.\n\n"
+        "3️⃣ <b>Точная настройка каждой строчки (Pro Mode):</b>\n"
+        "• Нажмите <b>«🧮 Открыть детальную смету (Pro Mode)»</b>.\n"
+        "• В открывшемся калькуляторе нажмите на любую цену (штукатурка, укладка плитки, кабель) и введите свою ставку!\n\n"
+        "Все изменения мгновенно начинают действовать для новых расчетов клиентов."
+    )
+
+
+async def _send_help_screen(cb: CallbackQuery, text: str, kb: InlineKeyboardMarkup):
+    """Гарантированная отправка раздела помощи: сначала editMessageText, при ошибке — sendMessage"""
+    try:
+        await cb.answer()
+    except Exception:
+        pass
+
+    edited = False
+    if cb.message:
+        try:
+            await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            edited = True
+        except Exception as edit_err:
+            logger.debug(f"edit_text в помощи не удался ({edit_err}), отправляем новым сообщением")
+
+    if not edited:
+        try:
+            chat_id = cb.message.chat.id if cb.message else cb.from_user.id
+            target_bot = cb.bot or master_bot
+            if target_bot:
+                await target_bot.send_message(chat_id=chat_id, text=text, reply_markup=kb, parse_mode="HTML")
+        except Exception as e:
+            logger.error(f"Ошибка отправки раздела помощи: {e}")
+
+
+@master_router.message(F.text == "🆘 Обучение и помощь")
+@master_router.message(Command("help"))
+@master_router.message(Command("support"))
+async def master_menu_help(message: Message):
+    """База знаний, понятные инструкции и контакт основателя"""
+    await message.answer(get_help_main_text(), reply_markup=get_help_inline_keyboard())
 
 
 @master_router.callback_query(F.data == "master_help_manual")
 async def master_cb_help_manual(cb: CallbackQuery):
     """Простая инструкция по работе связки Бот + Mini App для прораба"""
-    await cb.answer()
     company = find_company_for_admin(cb.from_user.id) or {}
     uname = company.get("bot_username") or "ваш_бот"
-
-    manual_text = (
-        "📖 <b>КАК РАБОТАЕТ ВАШ БОТ И КАЛЬКУЛЯТОР (НА ПАЛЬЦАХ):</b>\n\n"
-        "Вся система состоит из 2 простых частей:\n\n"
-        "1️⃣ <b>Ваш личный бот для клиентов (@" + uname + ")</b>\n"
-        "• Это ссылка, которую вы даёте заказчикам на Авито, в соцсетях или по сарафанному радио.\n"
-        "• Клиент нажимает <i>«Рассчитать стоимость»</i> — прямо внутри Telegram открывается удобный мини-сайт.\n"
-        "• Клиент двигает ползунок площади (например, 54 м²), выбирает тип ремонта (Капитальный / Комфорт / Дизайнерский) и видит точную стоимость.\n"
-        "• Нажав кнопку «Зафиксировать смету», клиент оставляет своё имя и телефон.\n"
-        "• <b>Вы мгновенно получаете уведомление в этот чат</b> со всеми параметрами квартиры и готовым расчётом!\n\n"
-        "2️⃣ <b>Мини-приложение (умный калькулятор):</b>\n"
-        "• <b>Это не просто цифра с потолка, а честная смета по ГОСТ</b>: штукатурка стен, стяжка, проводка, плитка, обои.\n"
-        "• Клиент может сам снять галочки с тех работ, которые ему не нужны (например, если потолки делает знакомый) — смета пересчитается на лету, а клиент увидит свою экономию.\n"
-        "• Блок «Анти-развод» объясняет клиенту, почему смета не вырастет в 2 раза на объекте.\n\n"
-        "⚙️ <b>Как настроить цены под себя:</b>\n"
-        "• Зайдите в меню <b>«⚙️ Мои расценки»</b> внизу экрана.\n"
-        "• Нажмите <b>«✏️ Редактировать базовые цены»</b> (+10% / -10% к рынку) или отключите ненужные услуги тумблером.\n"
-        "• Или нажмите <b>«🧮 Открыть детальную смету (Pro Mode)»</b> и меняйте расценку любой строки прямо тапом по экрану!"
-    )
-    await cb.message.answer(manual_text)
-
-
-@master_router.callback_query(F.data == "master_help_video")
-async def master_cb_help_video(cb: CallbackQuery):
-    """Отправка видео или пошаговой инструкции по настройке"""
-    await cb.answer()
-    guide_text = (
-        "🎬 <b>Как подключить бота за 2 минуты через @BotFather:</b>\n\n"
-        "1. Откройте официального бота @BotFather в Telegram.\n"
-        "2. Отправьте команду <code>/newbot</code>.\n"
-        "3. Введите название вашей компании (например: <i>СК Мастер-Строй</i>).\n"
-        "4. Задайте юзернейм на латинице с окончанием <code>_bot</code> (например: <i>master_stroy_bot</i>).\n"
-        "5. Скопируйте полученный API-токен и отправьте его сюда в диалог.\n\n"
-        "Все остальное (кнопки меню, калькулятор и вебхук) настроится автоматически!"
-    )
-    if BOTFATHER_GUIDE_VIDEO_ID and master_bot:
-        try:
-            await cb.message.answer_video(
-                video=BOTFATHER_GUIDE_VIDEO_ID,
-                caption=guide_text,
-            )
-            return
-        except Exception:
-            pass
-
-    await cb.message.answer(guide_text)
+    await _send_help_screen(cb, get_help_manual_text(uname), get_help_back_keyboard())
 
 
 @master_router.callback_query(F.data == "master_help_avito")
 async def master_cb_help_avito(cb: CallbackQuery):
     """Пошаговая инструкция получения клиентов с Авито"""
-    await cb.answer()
     company = find_company_for_admin(cb.from_user.id) or {}
     uname = company.get("bot_username") or "moscow_remont_bot"
-
-    avito_strategy = (
-        "📈 <b>ИНСТРУКЦИЯ: Как получать от 3 заявок в день с Авито:</b>\n\n"
-        "1. <b>Заголовок объявления:</b>\n"
-        "«Ремонт квартир под ключ + расчет точной сметы в Telegram за 1 минуту»\n\n"
-        "2. <b>Вторая фотография в галерее:</b>\n"
-        "Скриншот вашего калькулятора с надписью «Рассчитайте стоимость ремонта за 60 секунд без звонков».\n\n"
-        "3. <b>Первая строчка описания:</b>\n"
-        f"«👉 Рассчитайте точную смету прямо сейчас: https://t.me/{uname}»\n\n"
-        "4. <b>Лид-магнит:</b>\n"
-        "Предлагайте <b>Бесплатный выезд инженера с лазерным сканером (0 ₽)</b> при фиксации сметы через калькулятор — это поднимает конверсию в 3–4 раза!"
-    )
-    await cb.message.answer(avito_strategy)
+    await _send_help_screen(cb, get_help_avito_text(uname), get_help_back_keyboard())
 
 
 @master_router.callback_query(F.data == "master_help_contract")
 async def master_cb_help_contract(cb: CallbackQuery):
     """Рекомендации по заключению договора по смете калькулятора"""
-    await cb.answer()
-    contract_text = (
-        "📄 <b>РЕКОМЕНДАЦИИ ПО ДОГОВОРУ ПОДРЯДА:</b>\n\n"
-        "1. <b>Твёрдая цена (ст. 709 ГК РФ):</b>\n"
-        "Прикладывайте смету из калькулятора как <i>Приложение №1</i>. Указывайте, что стоимость работ фиксируется и не может быть увеличена в одностороннем порядке.\n\n"
-        "2. <b>Поэтапная оплата (0% аванса за работы):</b>\n"
-        "Делите оплату на 3–4 этапа (черновой, инженерный, чистовой). Заказчик оплачивает этап только после подписания акта приёмки.\n\n"
-        "3. <b>Гарантия 36 месяцев:</b>\n"
-        "Фиксация 3-летней гарантии снимает любые возражения клиентов и отличает вас от шабашников."
-    )
-    await cb.message.answer(contract_text)
+    await _send_help_screen(cb, get_help_contract_text(), get_help_back_keyboard())
+
+
+@master_router.callback_query(F.data == "master_help_pricing")
+async def master_cb_help_pricing(cb: CallbackQuery):
+    """Инструкция по настройке расценок в боте"""
+    await _send_help_screen(cb, get_help_pricing_text(), get_help_back_keyboard())
+
+
+@master_router.callback_query(F.data == "master_help_back")
+async def master_cb_help_back(cb: CallbackQuery):
+    """Возврат в главное меню раздела помощи"""
+    await _send_help_screen(cb, get_help_main_text(), get_help_inline_keyboard())
 
 
 @master_router.message(Command("pay"))
@@ -1667,7 +1730,11 @@ async def master_process_token(message: Message, state: FSMContext):
         async with httpx.AsyncClient(timeout=10.0) as client:
             wh_resp = await client.post(
                 f"https://api.telegram.org/bot{token_candidate}/setWebhook",
-                json={"url": webhook_url, "drop_pending_updates": True},
+                json={
+                    "url": webhook_url,
+                    "drop_pending_updates": True,
+                    "allowed_updates": ["message", "edited_message", "callback_query"],
+                },
             )
             logger.info(f"setWebhook ({webhook_url}) результат: {wh_resp.json()}")
     except Exception as e:
@@ -1775,7 +1842,11 @@ async def lifespan(app: FastAPI):
     if master_bot and BASE_WEBHOOK_URL:
         master_webhook_url = f"{BASE_WEBHOOK_URL}/webhook/master"
         try:
-            await master_bot.set_webhook(master_webhook_url, drop_pending_updates=True)
+            await master_bot.set_webhook(
+                master_webhook_url,
+                drop_pending_updates=True,
+                allowed_updates=["message", "edited_message", "callback_query"],
+            )
             logger.info(f"Вебхук Мастер-бота установлен на {master_webhook_url}")
         except Exception as e:
             logger.warning(f"Не удалось установить вебхук для Мастер-бота: {e}")
@@ -1793,6 +1864,16 @@ async def lifespan(app: FastAPI):
                                 f"https://api.telegram.org/bot{t}/setChatMenuButton",
                                 json={"menu_button": {"type": "default"}},
                             )
+                            c_id = c.get("bot_username") or c.get("id")
+                            if c_id and BASE_WEBHOOK_URL:
+                                wh_url = f"{BASE_WEBHOOK_URL}/webhook/{c_id}"
+                                await client.post(
+                                    f"https://api.telegram.org/bot{t}/setWebhook",
+                                    json={
+                                        "url": wh_url,
+                                        "allowed_updates": ["message", "edited_message", "callback_query"],
+                                    },
+                                )
                         except Exception:
                             pass
         except Exception:
@@ -2178,6 +2259,38 @@ async def client_bot_webhook(company_id: str, request: Request):
                 ]
             }
 
+        elif cb_data == "master_help_manual":
+            response_text = get_help_manual_text(bot_uname)
+            cat_back_kb = {
+                "inline_keyboard": [[{"text": "⬅️ Назад в меню помощи", "callback_data": "master_help_back"}]]
+            }
+        elif cb_data == "master_help_avito":
+            response_text = get_help_avito_text(bot_uname)
+            cat_back_kb = {
+                "inline_keyboard": [[{"text": "⬅️ Назад в меню помощи", "callback_data": "master_help_back"}]]
+            }
+        elif cb_data == "master_help_contract":
+            response_text = get_help_contract_text()
+            cat_back_kb = {
+                "inline_keyboard": [[{"text": "⬅️ Назад в меню помощи", "callback_data": "master_help_back"}]]
+            }
+        elif cb_data == "master_help_pricing":
+            response_text = get_help_pricing_text()
+            cat_back_kb = {
+                "inline_keyboard": [[{"text": "⬅️ Назад в меню помощи", "callback_data": "master_help_back"}]]
+            }
+        elif cb_data == "master_help_back":
+            response_text = get_help_main_text()
+            cat_back_kb = {
+                "inline_keyboard": [
+                    [{"text": "📖 Как всё устроено (на пальцах)", "callback_data": "master_help_manual"}],
+                    [{"text": "📈 Как получать 3+ заявки в день с Авито", "callback_data": "master_help_avito"}],
+                    [{"text": "📄 Договор по смете и защита от споров", "callback_data": "master_help_contract"}],
+                    [{"text": "⚙️ Как настроить свои цены", "callback_data": "master_help_pricing"}],
+                    [{"text": "💬 Написать создателю платформы", "url": "https://t.me/kostrikin552"}],
+                ]
+            }
+
         if response_text and cb_msg_id:
             try:
                 async with httpx.AsyncClient(timeout=10.0) as client:
@@ -2350,6 +2463,31 @@ async def client_bot_webhook(company_id: str, request: Request):
                 )
         except Exception as e:
             logger.error(f"Ошибка отправки FAQ: {e}")
+
+    elif "помощ" in lower_text or "обучен" in lower_text or text in ["/help", "/support", "🆘 Обучение и помощь"]:
+        # Раздел помощи в боте компании
+        help_main_kb = {
+            "inline_keyboard": [
+                [{"text": "📖 Как всё устроено (на пальцах)", "callback_data": "master_help_manual"}],
+                [{"text": "📈 Как получать 3+ заявки в день с Авито", "callback_data": "master_help_avito"}],
+                [{"text": "📄 Договор по смете и защита от споров", "callback_data": "master_help_contract"}],
+                [{"text": "⚙️ Как настроить свои цены", "callback_data": "master_help_pricing"}],
+                [{"text": "💬 Написать создателю платформы", "url": "https://t.me/kostrikin552"}],
+            ]
+        }
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": get_help_main_text(),
+                        "parse_mode": "HTML",
+                        "reply_markup": help_main_kb,
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки раздела помощи в боте {company_id}: {e}")
 
     else:
         # Fallback: выводим кнопки меню
