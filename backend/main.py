@@ -931,12 +931,6 @@ def get_help_inline_keyboard() -> InlineKeyboardMarkup:
                     callback_data="master_help_pricing",
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="💬 Написать создателю платформы",
-                    url="https://t.me/kostrikin552",
-                )
-            ],
         ]
     )
 
@@ -2287,7 +2281,6 @@ async def client_bot_webhook(company_id: str, request: Request):
                     [{"text": "📈 Как получать 3+ заявки в день с Авито", "callback_data": "master_help_avito"}],
                     [{"text": "📄 Договор по смете и защита от споров", "callback_data": "master_help_contract"}],
                     [{"text": "⚙️ Как настроить свои цены", "callback_data": "master_help_pricing"}],
-                    [{"text": "💬 Написать создателю платформы", "url": "https://t.me/kostrikin552"}],
                 ]
             }
 
@@ -2472,7 +2465,6 @@ async def client_bot_webhook(company_id: str, request: Request):
                 [{"text": "📈 Как получать 3+ заявки в день с Авито", "callback_data": "master_help_avito"}],
                 [{"text": "📄 Договор по смете и защита от споров", "callback_data": "master_help_contract"}],
                 [{"text": "⚙️ Как настроить свои цены", "callback_data": "master_help_pricing"}],
-                [{"text": "💬 Написать создателю платформы", "url": "https://t.me/kostrikin552"}],
             ]
         }
         try:
