@@ -98,6 +98,14 @@ except ImportError:
         SUPABASE_URL,
     )
 
+try:
+    from backend.pdf_generator import generate_estimate_pdf
+except ImportError:
+    try:
+        from pdf_generator import generate_estimate_pdf
+    except Exception:
+        generate_estimate_pdf = None
+
 # ---------------------------------------------------------------------------
 # Логирование
 # ---------------------------------------------------------------------------
@@ -355,7 +363,7 @@ async def master_menu_my_bot(message: Message):
         "💡 <b>Куда поставить эту ссылку для заказов:</b>\n"
         "1. В текст или описание профиля на Авито.\n"
         "2. В шапку профиля ВКонтакте / Telegram-канала.\n"
-        "3. В статус или автоответчик WhatsApp."
+        "3. В описание Telegram-профиля или канала."
     )
 
     kb = InlineKeyboardMarkup(
@@ -2723,8 +2731,21 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         )
 
         inline_keyboard = []
-        if digits_only:
-            inline_keyboard.append([{"text": "💬 Написать в WhatsApp", "url": f"https://wa.me/{digits_only}"}])
+        # Кнопка быстрой связи в Telegram (вместо WhatsApp)
+        tg_user_match = None
+        if lead.comment:
+            tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", lead.comment)
+        if not tg_user_match and lead.active_options:
+            for opt in lead.active_options:
+                tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", str(opt))
+                if tg_user_match:
+                    break
+
+        if tg_user_match:
+            tg_username = tg_user_match.group(1)
+            inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/{tg_username}"}])
+        elif digits_only:
+            inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/+{digits_only}"}])
 
     # 5. Отправка мгновенного push-сообщения прорабу
     if admin_chat_id:
@@ -2738,8 +2759,33 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         if MASTER_BOT_TOKEN:
             bot_targets.append(("master_bot", MASTER_BOT_TOKEN))
 
+        # Генерируем детальный сметный PDF документ со всеми расчетами и позициями
+        pdf_bytes = None
+        if can_view_full and generate_estimate_pdf:
+            try:
+                lead_pdf_data = {
+                    "id": lead_id,
+                    "client_name": lead.name,
+                    "client_phone": lead.phone,
+                    "address": lead.address,
+                    "preferred_date": lead.preferred_date,
+                    "housing_type": housing_type,
+                    "repair_type": lead.renovation_class,
+                    "area_m2": lead.area,
+                    "total_base_cost": total_cost_num,
+                    "min_cost": lead.price_min,
+                    "max_cost": lead.price_max,
+                    "options": lead_options,
+                    "contact_channel": lead.communication or "telegram",
+                }
+                pdf_bytes = generate_estimate_pdf(lead_pdf_data, company)
+                if pdf_bytes:
+                    logger.info(f"Сформирован детальный PDF для сметы #{lead_id} (размер: {len(pdf_bytes)} байт)")
+            except Exception as pdf_ex:
+                logger.error(f"Не удалось сформировать PDF сметы: {pdf_ex}")
+
         try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
+            async with httpx.AsyncClient(timeout=15.0) as client:
                 for target_name, token in bot_targets:
                     try:
                         send_payload: Dict[str, Any] = {
@@ -2759,6 +2805,30 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                                 f"Уведомление прорабу (chat_id={admin_chat_id}) успешно доставлено через {target_name}: 200 OK"
                             )
                             delivered = True
+
+                            # Отправляем прикрепленный детальный PDF файл со всеми данными
+                            if pdf_bytes:
+                                try:
+                                    pdf_data = {
+                                        "chat_id": admin_chat_id,
+                                        "caption": f"📄 <b>Детальная смета по заявке #{lead_id}</b>\nОбъект: {lead.area} м² ({housing_type})\nКлиент: {safe_name}, {safe_phone}",
+                                        "parse_mode": "HTML",
+                                    }
+                                    pdf_files = {
+                                        "document": (f"Смета_{lead_id}.pdf", pdf_bytes, "application/pdf")
+                                    }
+                                    doc_res = await client.post(
+                                        f"https://api.telegram.org/bot{token}/sendDocument",
+                                        data=pdf_data,
+                                        files=pdf_files,
+                                    )
+                                    if doc_res.status_code == 200:
+                                        logger.info(f"PDF-смета #{lead_id} успешно доставлена через {target_name}: 200 OK")
+                                    else:
+                                        logger.warning(f"Не удалось отправить PDF через {target_name}: {doc_res.status_code} {doc_res.text}")
+                                except Exception as doc_err:
+                                    logger.error(f"Исключение отправки PDF через {target_name}: {doc_err}")
+
                             break
                         else:
                             logger.warning(

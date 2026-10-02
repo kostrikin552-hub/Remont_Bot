@@ -656,7 +656,7 @@ async def activate_subscription_for_company(
 
                     ik = []
                     if digits:
-                        ik.append([{"text": "💬 Написать в WhatsApp", "url": f"https://wa.me/{digits}"}])
+                        ik.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/+{digits}"}])
 
                     if target_token and target_chat:
                         try:

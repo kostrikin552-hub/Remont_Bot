@@ -81,6 +81,14 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         (opt) => `${opt.title} (+${opt.pricePerMeter} ₽/м²)`
       );
 
+      const tgUsername = tgUser?.username ? `@${tgUser.username}` : undefined;
+      const combinedComment = [
+        form.comment.trim(),
+        tgUsername ? `Telegram: ${tgUsername}` : '',
+      ]
+        .filter(Boolean)
+        .join(' | ');
+
       const res = await createLead({
         company_id: company.id,
         name: form.name.trim(),
@@ -96,7 +104,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         address: form.address.trim() || undefined,
         preferred_date: form.date,
         communication: form.communication,
-        comment: form.comment.trim() || undefined,
+        comment: combinedComment || undefined,
         agreement_152fz: form.agreement152fz,
       });
 
@@ -314,11 +322,10 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <MessageSquare className="w-3.5 h-3.5 text-zinc-500" />
                     Куда прислать подтверждение
                   </label>
-                  <div className="grid grid-cols-3 gap-1.5">
+                  <div className="grid grid-cols-2 gap-2">
                     {[
-                      { id: 'telegram', label: 'Telegram' },
-                      { id: 'whatsapp', label: 'WhatsApp' },
-                      { id: 'call', label: 'Звонок' },
+                      { id: 'telegram', label: '✈️ Telegram' },
+                      { id: 'call', label: '📞 Телефонный звонок' },
                     ].map((item) => (
                       <button
                         key={item.id}
