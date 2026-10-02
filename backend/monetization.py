@@ -190,7 +190,9 @@ def get_company_subscription(
             sub_data["subscription_status"] = company["subscription_status"]
         if "subscription_until" in company and company["subscription_until"]:
             sub_data["subscription_until"] = parse_iso_datetime(company["subscription_until"])
-        if "plan_id" in company and company["plan_id"]:
+        if "current_plan_id" in company and company["current_plan_id"]:
+            sub_data["plan_id"] = company["current_plan_id"]
+        elif "plan_id" in company and company["plan_id"]:
             sub_data["plan_id"] = company["plan_id"]
         if "trial_leads_used" in company and company["trial_leads_used"] is not None:
             sub_data["trial_leads_used"] = int(company["trial_leads_used"])
@@ -301,13 +303,7 @@ def check_and_consume_lead_access(
             SUBSCRIPTIONS_CACHE[comp_uuid]["trial_leads_used"] = new_used
         save_local_subscriptions()
 
-        # Обновляем в Supabase
-        if supabase_client and comp_uuid:
-            try:
-                supabase_client.table("companies").update({"trial_leads_used": new_used}).eq("id", comp_uuid).execute()
-            except Exception as e:
-                logger.debug(f"Не удалось обновить trial_leads_used в Supabase: {e}")
-
+        # Сохраняем использование в кэше и файле (в companies нет колонки trial_leads_used)
         return {
             "can_view_full": True,
             "is_paid": False,
@@ -363,6 +359,8 @@ def save_company_subscription(
             update_payload = {
                 "subscription_status": serialized["subscription_status"],
                 "subscription_until": serialized["subscription_until"],
+                "is_active": True if serialized["subscription_status"] == "active" else False,
+                "current_plan_id": serialized.get("plan_id", "1m"),
             }
             supabase_client.table("companies").update(update_payload).eq("id", company_uuid).execute()
         except Exception as e:

@@ -743,14 +743,9 @@ async def master_cb_adjust_pricing(cb: CallbackQuery):
     if supabase_client:
         try:
             update_data = {
-                "capital_price": p_capital,
                 "price_capital": p_capital,
-                "comfort_price": p_comfort,
-                "designer_price": p_designer,
                 "price_designer": p_designer,
-                "materials_price": p_materials,
                 "price_materials_m2": p_materials,
-                "secondary_coeff": sec_coeff,
                 "coef_secondary": sec_coeff,
             }
             supabase_client.table("pricing_rules").update(update_data).or_(f"company_id.eq.{comp_id},company_id.eq.{company.get('bot_username')}").execute()
@@ -2443,19 +2438,14 @@ async def update_pricing_endpoint(req: UpdatePricingRequest, company_id: Optiona
         try:
             update_data = {}
             if req.capital_price is not None:
-                update_data["capital_price"] = req.capital_price
                 update_data["price_capital"] = req.capital_price
             if req.cosmetic_price is not None:
-                update_data["cosmetic_price"] = req.cosmetic_price
                 update_data["price_cosmetic"] = req.cosmetic_price
             if req.designer_price is not None:
-                update_data["designer_price"] = req.designer_price
                 update_data["price_designer"] = req.designer_price
             if req.materials_price is not None:
-                update_data["materials_price"] = req.materials_price
                 update_data["price_materials_m2"] = req.materials_price
             if req.secondary_coeff is not None:
-                update_data["secondary_coeff"] = req.secondary_coeff
                 update_data["coef_secondary"] = req.secondary_coeff
 
             if update_data:
@@ -2602,17 +2592,22 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     # 3. Сохранение в Supabase (со статусом new или locked)
     if supabase_client:
         try:
+            lead_options = list(lead.active_options or [])
+            if lead.address and lead.address.strip():
+                lead_options.append(f"Адрес: {lead.address.strip()}")
+            if lead.comment and lead.comment.strip():
+                lead_options.append(f"Комментарий: {lead.comment.strip()}")
+
             insert_data = {
                 "company_id": company_uuid,
                 "client_name": lead.name,
                 "client_phone": lead.phone,
                 "contact_channel": lead.communication or "telegram",
-                "address": lead.address,
                 "preferred_date": lead.preferred_date,
                 "housing_type": "Новостройка" if lead.property_type == "new" else "Вторичка",
                 "repair_type": lead.renovation_class,
                 "area_m2": float(lead.area),
-                "options": lead.active_options or [],
+                "options": lead_options,
                 "min_cost": float(lead.price_min),
                 "max_cost": float(lead.price_max),
                 "status": lead_db_status,
@@ -2732,42 +2727,66 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             inline_keyboard.append([{"text": "💬 Написать в WhatsApp", "url": f"https://wa.me/{digits_only}"}])
 
     # 5. Отправка мгновенного push-сообщения прорабу
-    if admin_chat_id and bot_token:
+    if admin_chat_id:
+        delivered = False
+        # Формируем список ботов для гарантированной доставки:
+        # 1. Личный бот компании (если указан)
+        # 2. Мастер-бот платформы (где прораб уже точно зарегистрирован и нажал /start)
+        bot_targets = []
+        if bot_token and bot_token != MASTER_BOT_TOKEN:
+            bot_targets.append(("company_bot", bot_token))
+        if MASTER_BOT_TOKEN:
+            bot_targets.append(("master_bot", MASTER_BOT_TOKEN))
+
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
-                send_payload: Dict[str, Any] = {
-                    "chat_id": admin_chat_id,
-                    "text": notification_text,
-                    "parse_mode": "HTML",
-                }
-                if inline_keyboard:
-                    send_payload["reply_markup"] = {"inline_keyboard": inline_keyboard}
+                for target_name, token in bot_targets:
+                    try:
+                        send_payload: Dict[str, Any] = {
+                            "chat_id": admin_chat_id,
+                            "text": notification_text,
+                            "parse_mode": "HTML",
+                        }
+                        if inline_keyboard:
+                            send_payload["reply_markup"] = {"inline_keyboard": inline_keyboard}
 
-                res = await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                    json=send_payload,
-                )
-                if res.status_code == 200:
-                    logger.info(f"Уведомление прорабу (chat_id={admin_chat_id}, locked={not can_view_full}) доставлено: 200 OK")
-                else:
-                    logger.warning(
-                        f"Ошибка отправки с кнопками ({res.status_code}: {res.text}), отправляем fallback без кнопок..."
-                    )
-                    plain_text = (
-                        f"🚨 НОВАЯ ЗАЯВКА НА ЗАМЕР!\n"
-                        f"Клиент: {lead.name if can_view_full else mask_client_name(lead.name)}\n"
-                        f"Телефон: {lead.phone if can_view_full else mask_client_phone(lead.phone)}\n"
-                        f"Адрес: {lead.address if can_view_full else mask_address(lead.address)}\n"
-                        f"Связь: {channel_name}\n"
-                        f"Желаемая дата: {lead.preferred_date}\n"
-                        f"Объект: {housing_type}, {lead.area} м², {lead.renovation_class}\n"
-                        f"Смета: {total_cost_str} руб."
-                    )
-                    fb_res = await client.post(
-                        f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                        json={"chat_id": admin_chat_id, "text": plain_text},
-                    )
-                    logger.info(f"Результат fallback отправки: {fb_res.status_code}")
+                        res = await client.post(
+                            f"https://api.telegram.org/bot{token}/sendMessage",
+                            json=send_payload,
+                        )
+                        if res.status_code == 200:
+                            logger.info(
+                                f"Уведомление прорабу (chat_id={admin_chat_id}) успешно доставлено через {target_name}: 200 OK"
+                            )
+                            delivered = True
+                            break
+                        else:
+                            logger.warning(
+                                f"Ошибка отправки через {target_name} ({res.status_code}: {res.text}), пробуем plain-text fallback..."
+                            )
+                            plain_text = (
+                                f"🚨 НОВАЯ ЗАЯВКА НА ЗАМЕР!\n"
+                                f"Клиент: {lead.name if can_view_full else mask_client_name(lead.name)}\n"
+                                f"Телефон: {lead.phone if can_view_full else mask_client_phone(lead.phone)}\n"
+                                f"Адрес: {lead.address if can_view_full else mask_address(lead.address)}\n"
+                                f"Связь: {channel_name}\n"
+                                f"Желаемая дата: {lead.preferred_date}\n"
+                                f"Объект: {housing_type}, {lead.area} м², {lead.renovation_class}\n"
+                                f"Смета: {total_cost_str} руб."
+                            )
+                            fb_res = await client.post(
+                                f"https://api.telegram.org/bot{token}/sendMessage",
+                                json={"chat_id": admin_chat_id, "text": plain_text},
+                            )
+                            if fb_res.status_code == 200:
+                                logger.info(f"Fallback plain-text доставлен через {target_name}: 200 OK")
+                                delivered = True
+                                break
+                    except Exception as inner_e:
+                        logger.error(f"Исключение отправки через {target_name}: {inner_e}")
+
+            if not delivered:
+                logger.error(f"Не удалось доставить уведомление прорабу {admin_chat_id} ни через одного бота!")
         except Exception as e:
             logger.error(f"Не удалось отправить уведомление прорабу: {e}")
     else:

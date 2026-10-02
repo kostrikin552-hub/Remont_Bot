@@ -338,6 +338,11 @@ export async function createLead(payload: LeadPayload): Promise<{
   if (supabase) {
     try {
       const isUUID = /^[0-9a-fA-F-]{36}$/.test(payload.company_id);
+      const leadOptions = [...(payload.active_options || [])];
+      if (payload.address && payload.address.trim()) {
+        leadOptions.push(`Адрес: ${payload.address.trim()}`);
+      }
+
       const { data, error } = await supabase
         .from('leads')
         .insert([
@@ -346,14 +351,13 @@ export async function createLead(payload: LeadPayload): Promise<{
             client_name: payload.name,
             client_phone: payload.phone,
             contact_channel: payload.communication || 'telegram',
-            address: payload.address || null,
             preferred_date: payload.preferred_date,
             housing_type: payload.property_type === 'new' ? 'Новостройка' : 'Вторичка',
             repair_type: payload.renovation_class,
-            area_m2: payload.area,
-            options: payload.active_options || [],
-            min_cost: payload.price_min,
-            max_cost: payload.price_max,
+            area_m2: Number(payload.area),
+            options: leadOptions,
+            min_cost: Number(payload.price_min),
+            max_cost: Number(payload.price_max),
             status: 'new',
             created_at: new Date().toISOString(),
           },
