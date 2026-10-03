@@ -51,6 +51,8 @@ TELEGRAM_PAYMENT_PROVIDER_TOKEN: str = os.getenv(
 ).strip()
 
 YOOKASSA_SHOP_ID: str = os.getenv("YOOKASSA_SHOP_ID", "1413258").strip()
+YOOKASSA_SECRET_KEY: str = os.getenv("YOOKASSA_SECRET_KEY", "").strip()
+YOOKASSA_WEBHOOK_SECRET: str = os.getenv("YOOKASSA_WEBHOOK_SECRET", "").strip()
 
 # Мастер-ключ AES-256 (Fernet) для шифрования персональных данных (152-ФЗ)
 ENCRYPTION_KEY: str = os.getenv(

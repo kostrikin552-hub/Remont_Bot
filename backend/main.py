@@ -112,6 +112,19 @@ except ImportError:
     )
 
 try:
+    from backend.antifraud import (
+        validate_yookassa_webhook_request,
+        is_yookassa_ip,
+        get_client_ip,
+    )
+except ImportError:
+    from antifraud import (
+        validate_yookassa_webhook_request,
+        is_yookassa_ip,
+        get_client_ip,
+    )
+
+try:
     from backend.config import (
         BASE_WEBHOOK_URL,
         BOTFATHER_GUIDE_VIDEO_ID,
@@ -3852,20 +3865,52 @@ async def checkout_page(
     return HTMLResponse(content=html_content)
 
 
+@app.post("/api/billing/webhook")
 @app.post("/api/payments/webhook")
+@app.post("/api/payments/yookassa/webhook")
+@app.post("/api/yookassa-webhook")
 async def yookassa_webhook_endpoint(request: Request):
     """
-    Официальный эндпоинт вебхука ЮKassa:
-    При получении события payment.succeeded продлевает подписку на выбранный период
-    (30, 90 или 365 дней) и разблокирует все скрытые контакты клиентов.
+    Официальный эндпоинт вебхука ЮKassa с многоуровневой защитой от фрода (Antifraud):
+    1. Проверка IP-адреса отправителя по официальным CIDR-подсетям ЮKassa.
+    2. Проверка HMAC-подписи (Signature / X-Yookassa-Signature) при наличии секретного ключа.
+    3. Авторитетная верификация платежа напрямую через REST API ЮKassa (status == succeeded).
+    4. Защита от Replay-атак (идемпотентность по payment_id).
     """
+    raw_body = await request.body()
     try:
-        body = await request.json()
+        body = json.loads(raw_body.decode("utf-8")) if raw_body else {}
     except Exception:
-        return Response(status_code=status.HTTP_400_BAD_REQUEST)
+        return Response(
+            content=json.dumps({"error": "Invalid JSON format"}),
+            status_code=status.HTTP_400_BAD_REQUEST,
+            media_type="application/json",
+        )
+
+    headers = {k.lower(): v for k, v in request.headers.items()}
+    client_host = request.client.host if request.client else None
+
+    # Запускаем комплексную антифрод-валидацию
+    is_valid, status_code, reason, verified_payment_obj = await validate_yookassa_webhook_request(
+        headers=headers,
+        client_host=client_host,
+        raw_body=raw_body,
+        body_json=body,
+    )
+
+    if not is_valid:
+        client_ip = get_client_ip(headers, client_host)
+        logger.warning(
+            f"[ANTIFRAUD REJECTED] Отклонён нелегитимный запрос вебхука от IP={client_ip}: {reason}"
+        )
+        return Response(
+            content=json.dumps({"error": reason}),
+            status_code=status_code,
+            media_type="application/json",
+        )
 
     event = body.get("event")
-    payment_obj = body.get("object", {})
+    payment_obj = verified_payment_obj or body.get("object", {})
 
     if event == "payment.succeeded" or payment_obj.get("status") == "succeeded":
         metadata = payment_obj.get("metadata", {})
@@ -3873,7 +3918,7 @@ async def yookassa_webhook_endpoint(request: Request):
         admin_chat_id = metadata.get("admin_chat_id")
         plan_id = metadata.get("plan_id") or "1m"
         days_str = metadata.get("days")
-        days = int(days_str) if days_str and days_str.isdigit() else None
+        days = int(days_str) if days_str and str(days_str).isdigit() else None
 
         if admin_chat_id:
             try:
@@ -3889,7 +3934,7 @@ async def yookassa_webhook_endpoint(request: Request):
             days=days,
             plan_id=plan_id,
         )
-        logger.info(f"Вебхук ЮKassa успешно обработан для {company_id}: {res}")
+        logger.info(f"Вебхук ЮKassa успешно проверен антифродом и активирован для {company_id}: {res}")
 
     return {"status": "ok"}
 
