@@ -31,6 +31,7 @@ from aiogram.types import (
     InlineKeyboardMarkup,
     KeyboardButton,
     Message,
+    PreCheckoutQuery,
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
     Update,
@@ -894,7 +895,10 @@ async def master_cb_toggle_single_service(cb: CallbackQuery):
 # ---------------------------------------------------------------------------
 @master_router.message(F.text == "💎 Тариф и подписка")
 @master_router.message(Command("subscription"))
+@master_router.message(Command("sub"))
 @master_router.message(Command("tariff"))
+@master_router.message(Command("tariffs"))
+@master_router.message(Command("pay"))
 async def master_cmd_subscription(message: Message):
     """Кабинет управления подпиской строительной компании"""
     company = find_company_for_admin(message.from_user.id)
@@ -1232,6 +1236,40 @@ async def master_cmd_test_pay(message: Message):
         f"✅ <b>Подписка активна до:</b> {res.get('subscription_until')}\n"
         f"🚀 <b>Бот запущен и работает!</b>\n"
         f"🔓 <b>Разблокировано скрытых заявок:</b> {res.get('unlocked_leads', 0)}."
+    )
+
+
+@master_router.pre_checkout_query()
+async def master_pre_checkout_handler(query: PreCheckoutQuery):
+    """Подтверждение готовности принять платёж Telegram Payments"""
+    try:
+        await query.answer(ok=True)
+    except Exception as e:
+        logger.error(f"Ошибка подтверждения PreCheckoutQuery в мастер-боте: {e}")
+
+
+@master_router.message(F.successful_payment)
+async def master_successful_payment_handler(message: Message):
+    """Обработка успешной оплаты через нативные платежи Telegram в мастер-боте"""
+    sp = message.successful_payment
+    invoice_payload = str(sp.invoice_payload or "")
+    chosen_plan = "1m"
+    if "3m" in invoice_payload:
+        chosen_plan = "3m"
+    elif "1y" in invoice_payload or "year" in invoice_payload:
+        chosen_plan = "1y"
+
+    company = find_company_for_admin(message.from_user.id)
+    comp_id = (company.get("bot_username") if company else None) or "cuberlife_bot"
+    bot_token = company.get("bot_token") if company else None
+
+    await activate_subscription_for_company(
+        company_id=comp_id,
+        supabase_client=supabase_client,
+        master_bot=master_bot,
+        admin_chat_id=message.from_user.id,
+        bot_token=bot_token,
+        plan_id=chosen_plan,
     )
 
 
@@ -2222,9 +2260,41 @@ async def client_bot_webhook(company_id: str, request: Request):
         logger.warning(f"Бот-токен для компании {company_id} не найден.")
         return Response(status_code=status.HTTP_200_OK)
 
+    pre_checkout = body.get("pre_checkout_query")
+    if pre_checkout:
+        pq_id = pre_checkout.get("id")
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/answerPreCheckoutQuery",
+                    json={"pre_checkout_query_id": pq_id, "ok": True},
+                )
+        except Exception as e:
+            logger.error(f"Ошибка answerPreCheckoutQuery в боте {company_id}: {e}")
+        return Response(status_code=status.HTTP_200_OK)
+
     callback_query = body.get("callback_query")
     message = body.get("message")
     if not message and not callback_query:
+        return Response(status_code=status.HTTP_200_OK)
+
+    if message and message.get("successful_payment"):
+        sp = message.get("successful_payment")
+        invoice_payload = str(sp.get("invoice_payload", ""))
+        chosen_plan = "1m"
+        if "3m" in invoice_payload:
+            chosen_plan = "3m"
+        elif "1y" in invoice_payload or "year" in invoice_payload:
+            chosen_plan = "1y"
+
+        await activate_subscription_for_company(
+            company_id=company_id,
+            supabase_client=supabase_client,
+            master_bot=master_bot,
+            admin_chat_id=message.get("chat", {}).get("id"),
+            bot_token=bot_token,
+            plan_id=chosen_plan,
+        )
         return Response(status_code=status.HTTP_200_OK)
 
     if callback_query:
@@ -2381,7 +2451,7 @@ async def client_bot_webhook(company_id: str, request: Request):
         return Response(status_code=status.HTTP_200_OK)
 
     # Команда /subscription (кабинет подписки)
-    if text == "/subscription":
+    if text in ["/subscription", "/sub", "/tariff", "/tariffs", "/pay"]:
         trial_used = sub_info.get("trial_leads_used", 0)
         trial_left = max(0, 3 - trial_used)
         if is_active and until:
@@ -2396,13 +2466,13 @@ async def client_bot_webhook(company_id: str, request: Request):
                 f"🎁 <b>Статус: Бесплатный триал (Usage-Based Freemium)</b>\n"
                 f"📊 <b>Использовано заявок:</b> {trial_used} из 3\n"
                 f"⚡️ <b>Осталось полных бесплатных заявок:</b> {trial_left}\n"
-                f"💡 <i>Первые 3 заявки приходят с полными номерами телефонов и адресами. "
-                f"Заявка 4 и далее поступает в замаскированном виде до оплаты подписки.</i>"
+                f"💡 <i>Первые 3 заявки приходят с полными номерами телефонов и точными адресами. "
+                f"Заявка 4 и далее поступает с замаскированным телефоном и адресом до оплаты подписки.</i>"
             )
         else:
             status_desc = (
                 "🔒 <b>Статус: 3 бесплатные заявки триала исчерпаны!</b>\n"
-                "⚠️ Новые заявки поступают с замаскированными контактами (+7 (999) ***-**-42).\n"
+                "⚠️ Новые заявки поступают с замаскированными контактами и адресом (+7 (999) ***-**-42).\n"
                 "Для снятия маски и получения прямых контактов клиентов выберите тариф:"
             )
 
@@ -3169,8 +3239,15 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     options_list = lead.active_options or []
     options_str = ""
     if options_list:
-        clean_opts = [html.escape(opt) for opt in options_list[:4]]
-        options_str = f"🔧 <b>Доп. опции:</b> {', '.join(clean_opts)}\n"
+        clean_opts = []
+        for opt in options_list:
+            opt_str = str(opt).strip()
+            # Если заявка заблокирована (нет оплаты), исключаем любые утечки адреса или контактов
+            if not can_view_full and any(k in opt_str for k in ["Адрес:", "адрес:", "ул.", "д.", "кв.", "ЖК", "@"]):
+                continue
+            clean_opts.append(html.escape(opt_str))
+        if clean_opts:
+            options_str = f"🔧 <b>Доп. опции:</b> {', '.join(clean_opts[:4])}\n"
 
     comp_name = company.get("name") if company else "Ваша компания"
     _, url_1m = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "1m")
@@ -3184,11 +3261,11 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         masked_addr = mask_address(lead.address)
 
         notification_text = (
-            "🔒 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР! КОНТАКТЫ ЗАМАСКИРОВАНЫ</b>\n"
+            "🔒 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР! ТЕЛЕФОН И АДРЕС ЗАМАСКИРОВАНЫ</b>\n"
             "━━━━━━━━━━━━━━━━━━\n"
             f"👤 <b>Клиент:</b> {html.escape(masked_name)}\n"
             f"📱 <b>Телефон:</b> <code>{html.escape(masked_phone)}</code>\n"
-            f"📍 <b>Адрес:</b> {html.escape(masked_addr)}\n"
+            f"📍 <b>Адрес:</b> <code>{html.escape(masked_addr)}</code>\n"
             f"💬 <b>Связь:</b> {html.escape(channel_name)}\n"
             f"📅 <b>Желаемая дата:</b> {html.escape(str(lead.preferred_date or 'Не указана'))}\n\n"
             f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м², {lead.renovation_class}\n"
@@ -3197,14 +3274,14 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             "━━━━━━━━━━━━━━━━━━\n"
             "⚠️ <b>3 бесплатные заявки триала исчерпаны!</b>\n"
             f"Клиент только что зафиксировал смету на <b>{total_cost_str} ₽</b> и ожидает звонка для выезда на замер.\n\n"
-            "👉 Нажмите кнопку ниже, чтобы снять маску с телефона и адреса заказчика:"
+            "👉 Нажмите кнопку ниже, чтобы открыть полный номер телефона и точный адрес заказчика:"
         )
 
         inline_keyboard = [
             [{"text": "🔓 Разблокировать клиента за 2 990 ₽/мес", "url": url_1m}],
             [
-                {"text": "🔥 3 мес (-11%) — 7 990 ₽", "url": url_3m},
-                {"text": "💎 1 год (-30%) — 24 990 ₽", "url": url_1y},
+                {"text": "🔥 3 мес (-22%) — 6 990 ₽", "url": url_3m},
+                {"text": "💎 1 год (-35%) — 22 990 ₽", "url": url_1y},
             ],
         ]
     else:
@@ -3593,22 +3670,22 @@ async def checkout_page(
                 <div>
                     <div class="plan-title">
                         3 месяца
-                        <span class="plan-tag">-11%</span>
+                        <span class="plan-tag">-22%</span>
                     </div>
-                    <div class="plan-subtitle">90 дней (экономия 980 ₽)</div>
+                    <div class="plan-subtitle">90 дней (экономия 1 980 ₽)</div>
                 </div>
-                <div class="plan-price">7 990 ₽</div>
+                <div class="plan-price">6 990 ₽</div>
             </div>
 
             <div class="plan-card {'active' if initial_plan == '1y' else ''}" id="card-1y" onclick="selectPlan('1y')">
                 <div>
                     <div class="plan-title">
                         1 год (365 дней)
-                        <span class="plan-tag">-30%</span>
+                        <span class="plan-tag">-35%</span>
                     </div>
-                    <div class="plan-subtitle">~2 080 ₽/мес (выгода 10 890 ₽)</div>
+                    <div class="plan-subtitle">~1 915 ₽/мес (выгода 12 890 ₽)</div>
                 </div>
-                <div class="plan-price">24 990 ₽</div>
+                <div class="plan-price">22 990 ₽</div>
             </div>
         </div>
 
@@ -3641,8 +3718,8 @@ async def checkout_page(
     <script>
         const plans = {{
             '1m': {{ name: '1 месяц (30 дней)', price: '2 990 ₽', sum: 2990 }},
-            '3m': {{ name: '3 месяца (90 дней)', price: '7 990 ₽', sum: 7990 }},
-            '1y': {{ name: '1 год (365 дней)', price: '24 990 ₽', sum: 24990 }}
+            '3m': {{ name: '3 месяца (90 дней)', price: '6 990 ₽', sum: 6990 }},
+            '1y': {{ name: '1 год (365 дней)', price: '22 990 ₽', sum: 22990 }}
         }};
         let currentPlan = '{initial_plan}';
 

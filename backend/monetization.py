@@ -40,6 +40,15 @@ except ImportError:
         YOOKASSA_SHOP_ID,
     )
 
+try:
+    from backend.security import decrypt_payload, ENCRYPTED_PLACEHOLDER
+except ImportError:
+    try:
+        from security import decrypt_payload, ENCRYPTED_PLACEHOLDER
+    except ImportError:
+        decrypt_payload = None
+        ENCRYPTED_PLACEHOLDER = "[ENCRYPTED_AES256]"
+
 logger = logging.getLogger("monetization")
 
 # ---------------------------------------------------------------------------
@@ -444,23 +453,28 @@ def mask_client_phone(phone: str) -> str:
     return "+7 (999) ***-**-**"
 
 
-def mask_address(address: Optional[str]) -> str:
-    """Маскирует точный адрес, сохраняя город/ЖК для понимания локации объекта"""
+def mask_address(address: Optional[str], default_city: str = "г. Москва") -> str:
+    """
+    Маскирует адрес для заблокированных заявок (начиная с 4-й заявки триала).
+    Полностью скрывает улицу, дом, корпус, ЖК и номер квартиры.
+    Оставляет только город/регион и индикатор блокировки до оплаты подписки.
+    """
     addr = (address or "").strip()
-    if not addr:
-        return "г. Москва, [адрес скрыт]"
+    if not addr or addr == "[ENCRYPTED_AES256]":
+        return f"{default_city}, [🔒 точный адрес и дом скрыты до оплаты подписки]"
 
-    match_jk = re.search(r"(ЖК\s+[«\"]?[^,\"]+[»\"]?)", addr, re.IGNORECASE)
-    if match_jk:
-        jk = match_jk.group(1).strip()
-        return f"{jk}, кв. ** (скрыто)"
+    # Если адрес начинается со служебных приставок ЖК, ул, д, пер и т.д. — подставляем город
+    if re.match(r"^(жк|ул|ул\.|улица|пер|пер\.|проезд|пр-т|проспект|д\.|дом)\b", addr, re.IGNORECASE):
+        city = default_city
+    else:
+        city_match = re.match(
+            r"^(г\.\s*[A-Za-zА-Яа-яЁё\-]+|[A-Za-zА-Яа-яЁё\-]+(?:\s+обл|\s+область|\s+край)?)",
+            addr,
+            re.IGNORECASE,
+        )
+        city = city_match.group(1).strip() if city_match else default_city
 
-    parts = [p.strip() for p in addr.split(",") if p.strip()]
-    if len(parts) >= 2:
-        return f"{parts[0]}, {parts[1][:5]}*** [дом/квартира скрыты]"
-    elif len(parts) == 1:
-        return f"{parts[0][:8]}*** [адрес скрыт]"
-    return "*** [адрес скрыт]"
+    return f"{city}, [🔒 точный адрес и дом скрыты до оплаты подписки]"
 
 
 def create_payment_url(
@@ -660,12 +674,20 @@ async def activate_subscription_for_company(
 
     # МГНОВЕННАЯ РАЗБЛОКИРОВКА ВСЕХ ЗАБЛОКИРОВАННЫХ ЛИДОВ (locked / paywall_locked)
     unlocked_count = 0
-    if supabase_client and comp_uuid:
+    if supabase_client:
         try:
+            # Ищем заблокированные лиды как по UUID компании, так и по bot_username
+            target_ids = []
+            if comp_uuid:
+                target_ids.append(f"company_id.eq.{comp_uuid}")
+            if company_id:
+                target_ids.append(f"company_id.eq.{company_id.lower()}")
+            or_filter = ",".join(target_ids) if target_ids else f"company_id.eq.{company_id}"
+
             locked_leads_res = (
                 supabase_client.table("leads")
                 .select("*")
-                .eq("company_id", comp_uuid)
+                .or_(or_filter)
                 .in_("status", ["locked", "paywall_locked"])
                 .execute()
             )
@@ -676,11 +698,27 @@ async def activate_subscription_for_company(
                     lead_id = lead.get("id")
                     supabase_client.table("leads").update({"status": "unlocked"}).eq("id", lead_id).execute()
 
+                    # Расшифровываем реальные данные из AES-256 encrypted_payload
                     client_name = lead.get("client_name") or lead.get("name") or "Клиент"
                     client_phone = lead.get("client_phone") or lead.get("phone") or ""
+                    client_address = lead.get("address") or "Не указан"
+
+                    enc_payload = lead.get("encrypted_payload")
+                    if enc_payload and decrypt_payload:
+                        try:
+                            decrypted = decrypt_payload(enc_payload)
+                            if decrypted:
+                                if decrypted.get("client_name"):
+                                    client_name = decrypted["client_name"]
+                                if decrypted.get("client_phone"):
+                                    client_phone = decrypted["client_phone"]
+                                if decrypted.get("address"):
+                                    client_address = decrypted["address"]
+                        except Exception as dec_err:
+                            logger.error(f"Ошибка расшифровки лида {lead_id}: {dec_err}")
+
                     clean_phone = re.sub(r"[^0-9+]", "", client_phone)
                     digits = re.sub(r"[^0-9]", "", clean_phone)
-                    client_address = lead.get("address") or "Не указан"
 
                     min_c = lead.get("min_cost") or lead.get("price_min", 0) or 0
                     max_c = lead.get("max_cost") or lead.get("price_max", 0) or 0
@@ -690,15 +728,15 @@ async def activate_subscription_for_company(
                     card_text = (
                         "🔓 <b>РАЗБЛОКИРОВАННЫЙ КЛИЕНТ!</b>\n"
                         "━━━━━━━━━━━━━━━━━━\n"
-                        f"👤 <b>Клиент:</b> {client_name}\n"
-                        f"📱 <b>Телефон:</b> <code>{client_phone}</code>\n"
-                        f"📍 <b>Адрес:</b> {client_address}\n"
-                        f"💬 <b>Связь:</b> {lead.get('contact_channel') or lead.get('communication') or 'Telegram'}\n"
-                        f"📅 <b>Дата:</b> {lead.get('preferred_date', 'Не указана')}\n\n"
+                        f"👤 <b>Клиент:</b> {html.escape(client_name)}\n"
+                        f"📱 <b>Телефон:</b> <code>{html.escape(client_phone)}</code>\n"
+                        f"📍 <b>Адрес:</b> {html.escape(client_address)}\n"
+                        f"💬 <b>Связь:</b> {html.escape(lead.get('contact_channel') or lead.get('communication') or 'Telegram')}\n"
+                        f"📅 <b>Дата:</b> {html.escape(str(lead.get('preferred_date', 'Не указана')))}\n\n"
                         f"🏠 <b>Объект:</b> {lead.get('housing_type', 'Квартира')}, {lead.get('area_m2') or lead.get('area', 0)} м², {lead.get('repair_type') or lead.get('renovation_class', '')}\n"
                         f"💰 <b>Смета:</b> <b>{tot_formatted} ₽</b>\n"
                         "━━━━━━━━━━━━━━━━━━\n"
-                        "✅ <i>Контакты открыты после оплаты подписки! Вы можете связаться с клиентом прямо сейчас.</i>"
+                        "✅ <i>Контакты и точный адрес открыты после оплаты подписки! Вы можете связаться с клиентом прямо сейчас.</i>"
                     )
 
                     ik = []
