@@ -52,6 +52,11 @@ TELEGRAM_PAYMENT_PROVIDER_TOKEN: str = os.getenv(
 
 YOOKASSA_SHOP_ID: str = os.getenv("YOOKASSA_SHOP_ID", "1413258").strip()
 
+# Мастер-ключ AES-256 (Fernet) для шифрования персональных данных (152-ФЗ)
+ENCRYPTION_KEY: str = os.getenv(
+    "ENCRYPTION_KEY", "12MBKl7cmQ9DWOeVtlJH4rwPh7sjtAA0HfBERYIf3KI="
+).strip()
+
 # URLs монолита на Render.com
 BASE_WEBHOOK_URL: str = normalize_url(
     os.getenv("BASE_WEBHOOK_URL", ""), "https://remont-backend-exr3.onrender.com"

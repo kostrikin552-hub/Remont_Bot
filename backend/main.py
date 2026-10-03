@@ -96,6 +96,19 @@ except ImportError:
     from privacy import get_privacy_policy_html, PRIVACY_SUMMARY_TEXT
 
 try:
+    from backend.security import (
+        sanitize_lead_record_for_storage,
+        decrypt_payload,
+        ENCRYPTED_PLACEHOLDER,
+    )
+except ImportError:
+    from security import (
+        sanitize_lead_record_for_storage,
+        decrypt_payload,
+        ENCRYPTED_PLACEHOLDER,
+    )
+
+try:
     from backend.config import (
         BASE_WEBHOOK_URL,
         BOTFATHER_GUIDE_VIDEO_ID,
@@ -583,19 +596,39 @@ async def master_cb_export_excel(cb: CallbackQuery):
         "Статус",
     ])
 
+    sub_info = get_company_subscription(comp_id, company, supabase_client)
+    is_active_sub = sub_info.get("is_active", False)
+
     for row in leads_data:
+        enc_payload = row.get("encrypted_payload")
+        decrypted = decrypt_payload(enc_payload) if enc_payload else {}
+
+        raw_cname = decrypted.get("client_name") or row.get("name") or row.get("client_name") or "Клиент"
+        raw_cphone = decrypted.get("client_phone") or row.get("phone") or row.get("client_phone") or "—"
+        raw_addr = decrypted.get("address") or row.get("address") or row.get("city") or "—"
+
+        is_locked = row.get("status") == "locked"
+        if is_locked and not is_active_sub:
+            lead_name = mask_client_name(raw_cname) if raw_cname != ENCRYPTED_PLACEHOLDER else "Клиент [Заблокировано]"
+            lead_phone = mask_client_phone(raw_cphone) if raw_cphone != ENCRYPTED_PLACEHOLDER else "+7 (***) ***-**-**"
+            lead_addr = mask_address(raw_addr) if raw_addr != ENCRYPTED_PLACEHOLDER else "г. Москва, ул. [Скрыто]"
+        else:
+            lead_name = raw_cname if raw_cname != ENCRYPTED_PLACEHOLDER else "Клиент"
+            lead_phone = raw_cphone if raw_cphone != ENCRYPTED_PLACEHOLDER else "—"
+            lead_addr = raw_addr if raw_addr != ENCRYPTED_PLACEHOLDER else (row.get("city") or "—")
+
         writer.writerow([
             row.get("id", ""),
             row.get("created_at", ""),
-            row.get("name") or row.get("client_name") or "—",
-            row.get("phone") or row.get("client_phone") or "—",
-            row.get("address") or row.get("city") or "—",
-            row.get("area") or row.get("area_sqm") or "—",
-            row.get("property_type") or "Вторичка",
-            row.get("renovation_class") or "Капитальный",
-            row.get("works_cost") or "—",
+            lead_name,
+            lead_phone,
+            lead_addr,
+            row.get("area") or row.get("area_m2") or row.get("area_sqm") or "—",
+            row.get("property_type") or row.get("housing_type") or "Вторичка",
+            row.get("renovation_class") or row.get("repair_type") or "Капитальный",
+            row.get("works_cost") or row.get("min_cost") or "—",
             row.get("materials_cost") or "—",
-            row.get("total_base_cost") or row.get("total_cost") or row.get("price_max") or "—",
+            row.get("total_base_cost") or row.get("total_cost") or row.get("max_cost") or "—",
             row.get("status") or "Новая",
         ])
 
@@ -3069,19 +3102,38 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     trial_left = access_info.get("trial_left", 0)
     lead_db_status = access_info.get("lead_status", "new")  # 'new' (полный доступ) или 'locked' (замаскированный)
 
-    # 3. Сохранение в Supabase (со статусом new или locked)
+    # 3. Нормализация телефона клиента для шифрования и уведомлений
+    clean_phone = re.sub(r"[^0-9+]", "", lead.phone)
+    if clean_phone.startswith("8") and len(clean_phone) == 11:
+        clean_phone = "+7" + clean_phone[1:]
+    elif not clean_phone.startswith("+") and len(clean_phone) >= 10:
+        clean_phone = "+" + clean_phone
+
+    # 4. Сохранение в Supabase с криптографической защитой AES-256 (152-ФЗ РФ)
+    # СТРОГО: В поля client_phone, client_name, address (а также name, phone)
+    # НИКОГДА не пишется открытый текст! Пишется только [ENCRYPTED_AES256],
+    # а сами данные шифруются в encrypted_payload мастер-ключом AES-256 (Fernet).
     if supabase_client:
         try:
+            crypto_fields = sanitize_lead_record_for_storage(
+                raw_name=lead.name,
+                raw_phone=clean_phone,
+                raw_address=lead.address,
+                raw_comment=lead.comment,
+            )
+
+            # Безопасный список выбранных технических опций ремонта (без открытых персональных данных)
             lead_options = list(lead.active_options or [])
-            if lead.address and lead.address.strip():
-                lead_options.append(f"Адрес: {lead.address.strip()}")
-            if lead.comment and lead.comment.strip():
-                lead_options.append(f"Комментарий: {lead.comment.strip()}")
 
             insert_data = {
                 "company_id": company_uuid,
-                "client_name": lead.name,
-                "client_phone": lead.phone,
+                # Защита от утечек: открытый текст в БД категорически исключён
+                "client_name": crypto_fields["client_name"],
+                "name": crypto_fields["name"],
+                "client_phone": crypto_fields["client_phone"],
+                "phone": crypto_fields["phone"],
+                "address": crypto_fields["address"],
+                "encrypted_payload": crypto_fields["encrypted_payload"],
                 "contact_channel": lead.communication or "telegram",
                 "preferred_date": lead.preferred_date,
                 "housing_type": "Новостройка" if lead.property_type == "new" else "Вторичка",
@@ -3091,21 +3143,16 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                 "min_cost": float(lead.price_min),
                 "max_cost": float(lead.price_max),
                 "status": lead_db_status,
+                "agreement_152fz": True,
             }
             db_res = supabase_client.table("leads").insert(insert_data).execute()
             if db_res.data and len(db_res.data) > 0:
                 lead_id = str(db_res.data[0].get("id", lead_id))
-            logger.info(f"Лид {lead_id} (статус={lead_db_status}, full={can_view_full}) успешно записан в Supabase.")
+            logger.info(f"Лид {lead_id} (статус={lead_db_status}, full={can_view_full}, AES-256 encrypted) успешно записан в Supabase.")
         except Exception as e:
             logger.error(f"Ошибка записи лида в Supabase: {e}")
 
-    # 4. Формирование текста уведомления
-    clean_phone = re.sub(r"[^0-9+]", "", lead.phone)
-    if clean_phone.startswith("8") and len(clean_phone) == 11:
-        clean_phone = "+7" + clean_phone[1:]
-    elif not clean_phone.startswith("+") and len(clean_phone) >= 10:
-        clean_phone = "+" + clean_phone
-
+    # 5. Формирование текста уведомления
     channel_name = {
         "telegram": "Telegram",
         "whatsapp": "WhatsApp",

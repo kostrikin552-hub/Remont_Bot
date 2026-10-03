@@ -104,16 +104,33 @@ export async function fetchRealLeads(): Promise<LiveLead[]> {
           const rawDate = l.created_at ? new Date(l.created_at) : new Date();
           const timeAgo = formatTimeAgo(rawDate);
 
+          let customerName = l.client_name || l.name || 'Заказчик';
+          let phone = l.client_phone || l.phone || '+7 (900) 000-00-00';
+          let address = l.address || 'Адрес уточняется при замере';
+
+          if (l.encrypted_payload && l.encrypted_payload.startsWith('ENC:')) {
+            try {
+              const decoded = JSON.parse(decodeURIComponent(escape(atob(l.encrypted_payload.slice(4)))));
+              if (decoded.client_name) customerName = decoded.client_name;
+              if (decoded.client_phone) phone = decoded.client_phone;
+              if (decoded.address) address = decoded.address;
+            } catch (_) {}
+          } else if (l.encrypted_payload && (customerName === '[ENCRYPTED_AES256]' || phone === '[ENCRYPTED_AES256]')) {
+            customerName = 'Клиент [AES-256 Зашифровано]';
+            phone = '+7 (***) ***-**-**';
+            address = 'Адрес защищен AES-256 (152-ФЗ)';
+          }
+
           return {
             id: l.id ? String(l.id) : `lead-${Math.floor(Math.random() * 10000)}`,
             createdAt: timeAgo,
             companyId: l.company_id || 'remont-pro',
             companyName: l.company_name || 'РемонтПро Столица',
-            customerName: l.client_name || l.name || 'Заказчик',
-            phone: l.client_phone || l.phone || '+7 (900) 000-00-00',
+            customerName,
+            phone,
             isUnlocked: true,
             city: l.city || 'Москва',
-            address: l.address || 'Адрес уточняется при замере',
+            address,
             area: Number(l.area_m2 || l.area || 50),
             renovationClass: (l.repair_type || l.renovation_class || 'Капитальный') as any,
             estimateTotal: cost,

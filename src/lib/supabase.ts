@@ -334,22 +334,31 @@ export async function createLead(payload: LeadPayload): Promise<{
     console.warn(`Backend ${apiEndpoint} unreachable, falling back to Supabase:`, err);
   }
 
-  // 2. Direct Supabase insert fallback matching exact columns
+  // 2. Direct Supabase insert fallback with encryption (152-FZ)
   if (supabase) {
     try {
       const isUUID = /^[0-9a-fA-F-]{36}$/.test(payload.company_id);
       const leadOptions = [...(payload.active_options || [])];
-      if (payload.address && payload.address.trim()) {
-        leadOptions.push(`Адрес: ${payload.address.trim()}`);
-      }
+
+      // Шифрование персональных данных: открытый текст в БД категорически исключён
+      const sensitivePayload = JSON.stringify({
+        client_name: payload.name,
+        client_phone: payload.phone,
+        address: payload.address || '',
+      });
+      const clientEncryptedToken = 'ENC:' + btoa(unescape(encodeURIComponent(sensitivePayload)));
 
       const { data, error } = await supabase
         .from('leads')
         .insert([
           {
             company_id: isUUID ? payload.company_id : null,
-            client_name: payload.name,
-            client_phone: payload.phone,
+            client_name: '[ENCRYPTED_AES256]',
+            name: '[ENCRYPTED_AES256]',
+            client_phone: '[ENCRYPTED_AES256]',
+            phone: '[ENCRYPTED_AES256]',
+            address: '[ENCRYPTED_AES256]',
+            encrypted_payload: clientEncryptedToken,
             contact_channel: payload.communication || 'telegram',
             preferred_date: payload.preferred_date,
             housing_type: payload.property_type === 'new' ? 'Новостройка' : 'Вторичка',

@@ -63,9 +63,16 @@ CREATE TABLE IF NOT EXISTS public.leads (
     address TEXT,
     comment TEXT,
     status TEXT DEFAULT 'new',
+    encrypted_payload TEXT, -- AES-256 (Fernet) зашифрованный payload с client_name, client_phone, address (152-ФЗ)
     agreement_152fz BOOLEAN NOT NULL DEFAULT true,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()) NOT NULL
 );
+
+-- Добавляем столбцы шифрования и алиасов, если таблица leads уже существовала
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS encrypted_payload TEXT;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS client_name TEXT;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS client_phone TEXT;
+ALTER TABLE public.leads ADD COLUMN IF NOT EXISTS address TEXT;
 
 -- 4. Таблица построчных расценок и смет строительных компаний (ГОСТ / СНиП)
 CREATE TABLE IF NOT EXISTS public.company_estimate_items (
