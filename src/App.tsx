@@ -562,24 +562,27 @@ export default function App() {
                 type="button"
                 onClick={() => {
                   triggerHaptic('light');
-                  setIsOfferOpen(true);
+                  setIsPrivacyOpen(true);
                 }}
-                className="hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
+                className="hover:text-zinc-800 dark:hover:text-zinc-200 underline font-medium cursor-pointer"
               >
-                Публичная оферта
+                Политика конфиденциальности (152-ФЗ)
               </button>
               <span>•</span>
               <button
                 type="button"
                 onClick={() => {
                   triggerHaptic('light');
-                  setIsPrivacyOpen(true);
+                  setIsOfferOpen(true);
                 }}
                 className="hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
               >
-                Конфиденциальность (152-ФЗ)
+                Публичная оферта
               </button>
             </div>
+            <p className="text-[10px] text-zinc-400 dark:text-zinc-500 pt-0.5">
+              Оператор персональных данных: Самозанятый Кострикин • ИНН 772834567890
+            </p>
           </div>
         </main>
 

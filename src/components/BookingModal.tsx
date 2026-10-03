@@ -412,6 +412,42 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     </>
                   )}
                 </button>
+
+                {/* 152-ФЗ: Согласие, ссылка на документ и оператор прямо под кнопкой */}
+                <div className="mt-3 text-center px-1 space-y-1">
+                  <p className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-snug">
+                    Нажимая кнопку, вы даете согласие на обработку персональных данных в соответствии с{' '}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        triggerHaptic('light');
+                        setShowPrivacyModal(true);
+                      }}
+                      className="underline text-zinc-800 dark:text-zinc-200 font-medium hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                    >
+                      Политикой конфиденциальности (152-ФЗ)
+                    </button>
+                    {' '}и условиями{' '}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        triggerHaptic('light');
+                        setShowOfferModal(true);
+                      }}
+                      className="underline text-zinc-800 dark:text-zinc-200 font-medium hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer"
+                    >
+                      публичной оферты
+                    </button>
+                    .
+                  </p>
+                  <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
+                    Оператор: Самозанятый Кострикин • ИНН 772834567890
+                  </p>
+                </div>
               </form>
             </div>
           )}

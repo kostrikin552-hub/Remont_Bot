@@ -91,6 +91,11 @@ except ImportError:
     from offer import get_public_offer_html, OFFER_SUMMARY_TEXT
 
 try:
+    from backend.privacy import get_privacy_policy_html, PRIVACY_SUMMARY_TEXT
+except ImportError:
+    from privacy import get_privacy_policy_html, PRIVACY_SUMMARY_TEXT
+
+try:
     from backend.config import (
         BASE_WEBHOOK_URL,
         BOTFATHER_GUIDE_VIDEO_ID,
@@ -1370,6 +1375,20 @@ async def master_cb_offer(cb: CallbackQuery):
         await target_bot.send_message(chat_id=cb.from_user.id, text=OFFER_SUMMARY_TEXT, reply_markup=kb, parse_mode="HTML")
 
 
+@master_router.message(Command("privacy"))
+@master_router.message(Command("policy"))
+async def master_cmd_privacy(message: Message):
+    """Политика обработки персональных данных (152-ФЗ РФ)"""
+    privacy_url = f"{BASE_WEBHOOK_URL}/privacy" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔒 Полный текст политики 152-ФЗ в браузере", url=privacy_url)],
+            [InlineKeyboardButton(text="📄 Публичная оферта", callback_data="btn_offer")],
+        ]
+    )
+    await message.answer(PRIVACY_SUMMARY_TEXT, reply_markup=kb, parse_mode="HTML")
+
+
 @master_router.message(Command("cancel_subscription"))
 async def master_cmd_cancel_subscription(message: Message):
     """Отмена автопродления подписки в 1 клик через команду"""
@@ -2104,6 +2123,32 @@ async def api_public_offer():
 
 
 # ---------------------------------------------------------------------------
+# Политика конфиденциальности и обработки персональных данных (152-ФЗ)
+# ---------------------------------------------------------------------------
+@app.get("/privacy", response_class=HTMLResponse)
+@app.get("/policy", response_class=HTMLResponse)
+async def privacy_policy_page():
+    """Официальная веб-страница Политики конфиденциальности (152-ФЗ)"""
+    return HTMLResponse(content=get_privacy_policy_html("РемонтПро"), status_code=200)
+
+
+@app.get("/api/privacy")
+async def api_privacy_policy():
+    """JSON-эндпоинт с реквизитами оператора и текстом согласия 152-ФЗ"""
+    return {
+        "status": "active",
+        "law": "152-FZ",
+        "operator": {
+            "name": "Самозанятый Кострикин",
+            "inn": "772834567890",
+            "status": "Плательщик НПД",
+            "email": "kostrikin552@gmail.com",
+        },
+        "consent_text": "Нажимая кнопку, вы даете согласие на обработку персональных данных в соответствии с Федеральным законом № 152-ФЗ и Политикой конфиденциальности платформы",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Вебхук Мастер-бота платформы: POST /webhook/master
 # ---------------------------------------------------------------------------
 @app.post("/webhook/master")
@@ -2212,6 +2257,28 @@ async def client_bot_webhook(company_id: str, request: Request):
                 )
         except Exception as e:
             logger.error(f"Ошибка отправки /offer в боте {company_id}: {e}")
+        return Response(status_code=status.HTTP_200_OK)
+
+    # Команда /privacy и /policy в боте компании
+    if text in ["/privacy", "/policy"]:
+        privacy_web_url = f"{BASE_WEBHOOK_URL}/privacy" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": PRIVACY_SUMMARY_TEXT,
+                        "parse_mode": "HTML",
+                        "reply_markup": {
+                            "inline_keyboard": [
+                                [{"text": "🔒 Открыть политику 152-ФЗ в браузере", "url": privacy_web_url}]
+                            ]
+                        },
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки /privacy в боте {company_id}: {e}")
         return Response(status_code=status.HTTP_200_OK)
 
     # Команда /cancel_subscription (отмена подписки в 1 клик)
