@@ -185,6 +185,16 @@ export const PublicOfferModal: React.FC<PublicOfferModalProps> = ({
                 Обработка данных производится в строгом соответствии с 152-ФЗ РФ и Политикой конфиденциальности. Данные хранятся в защищенном контуре с шифрованием.
               </p>
             </section>
+
+            <section>
+              <h4 className="font-bold text-zinc-900 dark:text-white text-xs mb-1">
+                6. Реквизиты Исполнителя
+              </h4>
+              <p className="text-zinc-700 dark:text-zinc-300">
+                Исполнитель: Самозанятый Кострикин Алексей Алексеевич (Плательщик НПД)<br />
+                ИНН: <span className="font-mono font-semibold">711380053758</span> • Email: <a href="mailto:kostrikin552@gmail.com" className="text-blue-600 dark:text-blue-400 underline">kostrikin552@gmail.com</a>
+              </p>
+            </section>
           </div>
         )}
 

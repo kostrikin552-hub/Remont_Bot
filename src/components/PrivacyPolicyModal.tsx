@@ -58,11 +58,11 @@ export const PrivacyPolicyModal: React.FC<PrivacyPolicyModalProps> = ({
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-[11px]">
             <div>
               <span className="text-zinc-500 dark:text-zinc-400 block">Оператор (ФИО):</span>
-              <span className="font-semibold text-zinc-900 dark:text-zinc-100">Самозанятый Кострикин</span>
+              <span className="font-semibold text-zinc-900 dark:text-zinc-100">Самозанятый Кострикин Алексей Алексеевич</span>
             </div>
             <div>
               <span className="text-zinc-500 dark:text-zinc-400 block">ИНН самозанятого:</span>
-              <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">772834567890</span>
+              <span className="font-mono font-semibold text-zinc-900 dark:text-zinc-100">711380053758</span>
             </div>
             <div>
               <span className="text-zinc-500 dark:text-zinc-400 block">Налоговый режим:</span>

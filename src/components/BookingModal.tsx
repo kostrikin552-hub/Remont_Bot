@@ -445,7 +445,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     .
                   </p>
                   <p className="text-[10px] text-zinc-400 dark:text-zinc-500">
-                    Оператор: Самозанятый Кострикин • ИНН 772834567890
+                    Оператор: Самозанятый Кострикин Алексей Алексеевич • ИНН 711380053758
                   </p>
                 </div>
               </form>

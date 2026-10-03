@@ -2139,8 +2139,8 @@ async def api_privacy_policy():
         "status": "active",
         "law": "152-FZ",
         "operator": {
-            "name": "Самозанятый Кострикин",
-            "inn": "772834567890",
+            "name": "Самозанятый Кострикин Алексей Алексеевич",
+            "inn": "711380053758",
             "status": "Плательщик НПД",
             "email": "kostrikin552@gmail.com",
         },
