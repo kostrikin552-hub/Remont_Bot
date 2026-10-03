@@ -182,6 +182,7 @@ def get_company_subscription(
         "is_active": False,
         "days_left": 0,
         "can_receive_unmasked": True,
+        "auto_renew": True,
     }
 
     # 1. Проверяем в объекте компании (если Supabase вернул эти поля)
@@ -346,6 +347,7 @@ def save_company_subscription(
             else sub_data.get("subscription_until")
         ),
         "plan_id": sub_data.get("plan_id", "1m"),
+        "auto_renew": sub_data.get("auto_renew", existing.get("auto_renew", True)),
     }
 
     SUBSCRIPTIONS_CACHE[key] = serialized
@@ -365,6 +367,51 @@ def save_company_subscription(
             supabase_client.table("companies").update(update_payload).eq("id", company_uuid).execute()
         except Exception as e:
             logger.debug(f"Синхронизация подписки с Supabase: {e}")
+
+
+def is_auto_renew_enabled(company_identifier: str) -> bool:
+    """Проверяет статус автопродления подписки (по умолчанию True)"""
+    key = str(company_identifier).lower()
+    cached = SUBSCRIPTIONS_CACHE.get(key, {})
+    return cached.get("auto_renew", True)
+
+
+def cancel_auto_renew(company_identifier: str, supabase_client: Any = None) -> bool:
+    """
+    Отмена подписки (автопродления) в 1 клик.
+    Отключает автоматические рекуррентные списания на следующий период.
+    Доступ сохраняется до конца текущего оплаченного расчетного периода.
+    """
+    key = str(company_identifier).lower()
+    if key in SUBSCRIPTIONS_CACHE:
+        SUBSCRIPTIONS_CACHE[key]["auto_renew"] = False
+    else:
+        SUBSCRIPTIONS_CACHE[key] = {"auto_renew": False}
+    save_local_subscriptions()
+
+    if supabase_client:
+        try:
+            supabase_client.table("companies").update({"auto_renew": False}).eq("bot_username", key).execute()
+        except Exception as e:
+            logger.debug(f"Не удалось обновить auto_renew в Supabase: {e}")
+    return True
+
+
+def resume_auto_renew(company_identifier: str, supabase_client: Any = None) -> bool:
+    """Возобновление автопродления подписки"""
+    key = str(company_identifier).lower()
+    if key in SUBSCRIPTIONS_CACHE:
+        SUBSCRIPTIONS_CACHE[key]["auto_renew"] = True
+    else:
+        SUBSCRIPTIONS_CACHE[key] = {"auto_renew": True}
+    save_local_subscriptions()
+
+    if supabase_client:
+        try:
+            supabase_client.table("companies").update({"auto_renew": True}).eq("bot_username", key).execute()
+        except Exception as e:
+            logger.debug(f"Не удалось возобновить auto_renew в Supabase: {e}")
+    return True
 
 
 def mask_client_name(name: str) -> str:

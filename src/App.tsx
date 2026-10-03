@@ -19,6 +19,8 @@ import { DetailedEstimateSection } from './components/DetailedEstimateSection';
 import { BookingModal } from './components/BookingModal';
 import { ViralShareModal } from './components/ViralShareModal';
 import { CompetitorAuditModal } from './components/CompetitorAuditModal';
+import { PublicOfferModal } from './components/PublicOfferModal';
+import { PrivacyPolicyModal } from './components/PrivacyPolicyModal';
 import { AppSkeleton } from './components/AppSkeleton';
 import { initTelegramApp, triggerHaptic } from './utils/telegram';
 import {
@@ -117,6 +119,8 @@ export default function App() {
   const [isBookingOpen, setIsBookingOpen] = useState(false);
   const [isShareOpen, setIsShareOpen] = useState(false);
   const [isAuditOpen, setIsAuditOpen] = useState(false);
+  const [isOfferOpen, setIsOfferOpen] = useState(false);
+  const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
 
   // Initialize Telegram Mini App SDK & parse viral deep links
@@ -542,8 +546,8 @@ export default function App() {
             </div>
           </div>
 
-          {/* Дежурный инженер */}
-          <div className="text-center py-1">
+          {/* Дежурный инженер и юридические ссылки */}
+          <div className="text-center py-2 space-y-1.5">
             <p className="text-[11px] text-zinc-500 dark:text-zinc-400">
               Дежурный инженер:{' '}
               <a
@@ -553,6 +557,29 @@ export default function App() {
                 {company.phone}
               </a>
             </p>
+            <div className="flex items-center justify-center gap-3 text-[11px] text-zinc-500 dark:text-zinc-400">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsOfferOpen(true);
+                }}
+                className="hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
+              >
+                Публичная оферта
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsPrivacyOpen(true);
+                }}
+                className="hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
+              >
+                Конфиденциальность (152-ФЗ)
+              </button>
+            </div>
           </div>
         </main>
 
@@ -596,6 +623,22 @@ export default function App() {
             }, 100);
           }}
         />
+
+        {/* Public Offer Modal */}
+        {isOfferOpen && (
+          <PublicOfferModal
+            companyName={company.name}
+            onClose={() => setIsOfferOpen(false)}
+          />
+        )}
+
+        {/* Privacy Policy Modal */}
+        {isPrivacyOpen && (
+          <PrivacyPolicyModal
+            companyName={company.name}
+            onClose={() => setIsPrivacyOpen(false)}
+          />
+        )}
       </div>
     </div>
   );

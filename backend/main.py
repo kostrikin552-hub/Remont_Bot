@@ -50,13 +50,16 @@ try:
         SUBSCRIPTIONS_CACHE,
         TRIAL_LEADS_COUNT,
         activate_subscription_for_company,
+        cancel_auto_renew,
         check_and_consume_lead_access,
         create_payment_url,
         get_company_subscription,
         get_plan,
+        is_auto_renew_enabled,
         mask_address,
         mask_client_name,
         mask_client_phone,
+        resume_auto_renew,
         save_company_subscription,
         save_local_subscriptions,
     )
@@ -68,16 +71,24 @@ except ImportError:
         SUBSCRIPTIONS_CACHE,
         TRIAL_LEADS_COUNT,
         activate_subscription_for_company,
+        cancel_auto_renew,
         check_and_consume_lead_access,
         create_payment_url,
         get_company_subscription,
         get_plan,
+        is_auto_renew_enabled,
         mask_address,
         mask_client_name,
         mask_client_phone,
+        resume_auto_renew,
         save_company_subscription,
         save_local_subscriptions,
     )
+
+try:
+    from backend.offer import get_public_offer_html, OFFER_SUMMARY_TEXT
+except ImportError:
+    from offer import get_public_offer_html, OFFER_SUMMARY_TEXT
 
 try:
     from backend.config import (
@@ -303,20 +314,37 @@ def get_main_master_menu() -> ReplyKeyboardMarkup:
     return keyboard
 
 
-def get_subscription_keyboard(comp_id: str, comp_name: str, chat_id: int) -> InlineKeyboardMarkup:
-    """Генерирует клавиатуру с кнопками для 3-х тарифов подписки и реферальной программы"""
+def get_subscription_keyboard(
+    comp_id: str, comp_name: str, chat_id: int, is_active: bool = False, auto_renew: bool = True
+) -> InlineKeyboardMarkup:
+    """Генерирует клавиатуру с кнопками для 3-х тарифов подписки, оферты и отмены автопродления в 1 клик"""
     _, url_1m = create_payment_url(comp_id, comp_name, chat_id, "1m")
     _, url_3m = create_payment_url(comp_id, comp_name, chat_id, "3m")
     _, url_1y = create_payment_url(comp_id, comp_name, chat_id, "1y")
 
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [InlineKeyboardButton(text="💳 1 месяц — 2 990 ₽", url=url_1m)],
-            [InlineKeyboardButton(text="🔥 3 месяца — 6 990 ₽ (Скидка 22%) 🔥", url=url_3m)],
-            [InlineKeyboardButton(text="💎 1 год — 22 990 ₽ (Экономия 12 890 ₽)", url=url_1y)],
-            [InlineKeyboardButton(text="🎁 Месяц за коллегу (Рефералка)", callback_data="btn_referral")],
-        ]
-    )
+    offer_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+
+    rows = [
+        [InlineKeyboardButton(text="💳 1 месяц — 2 990 ₽", url=url_1m)],
+        [InlineKeyboardButton(text="🔥 3 месяца — 6 990 ₽ (Скидка 22%) 🔥", url=url_3m)],
+        [InlineKeyboardButton(text="💎 1 год — 22 990 ₽ (Экономия 12 890 ₽)", url=url_1y)],
+        [
+            InlineKeyboardButton(text="🎁 Месяц за коллегу", callback_data="btn_referral"),
+            InlineKeyboardButton(text="📄 Публичная оферта", url=offer_url),
+        ],
+    ]
+
+    if is_active:
+        if auto_renew:
+            rows.append([
+                InlineKeyboardButton(text="❌ Отменить автопродление в 1 клик", callback_data="btn_cancel_sub")
+            ])
+        else:
+            rows.append([
+                InlineKeyboardButton(text="🔄 Возобновить автопродление", callback_data="btn_resume_sub")
+            ])
+
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # Регулярное выражение токена Telegram бота: 8-12 цифр, двоеточие, 35 символов ключа
@@ -851,12 +879,16 @@ async def master_cmd_subscription(message: Message):
     total_trial = sub_info.get("total_trial_limit", 3)
     trial_left = max(0, total_trial - trial_used)
 
+    auto_renew = sub_info.get("auto_renew", True)
+
     if is_active and until:
         until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
         plan_title = "Безлимитный тариф"
+        renew_str = "Включено (списание в день окончания) 🔄" if auto_renew else "Отключено (следующих списаний не будет) ⏸"
         status_line = (
             f"• <b>Ваш тариф:</b> {plan_title}\n"
-            f"• <b>Текущий статус:</b> Активен до {until_dt.strftime('%d.%m.%Y')} (осталось {days_left} дн.) 🟢"
+            f"• <b>Текущий статус:</b> Активен до {until_dt.strftime('%d.%m.%Y')} (осталось {days_left} дн.) 🟢\n"
+            f"• <b>Автопродление:</b> {renew_str}"
         )
     elif trial_used < total_trial:
         status_line = (
@@ -873,10 +905,12 @@ async def master_cmd_subscription(message: Message):
         "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n\n"
         f"{status_line}\n\n"
         "После исчерпания 3 заявок новые контакты будут скрыты. Продлите доступ заранее, чтобы не терять клиентов:\n\n"
-        "👇 <b>Выберите подходящий тариф:</b>"
+        "👇 <b>Выберите подходящий тариф:</b>\n\n"
+        "ℹ️ <i>Услуга считается оказанной в момент предоставления доступа к функционалу платформы. "
+        "Автопродление можно отменить в 1 клик в любой момент командой /cancel_subscription или кнопкой ниже.</i>"
     )
 
-    kb = get_subscription_keyboard(comp_id, comp_name, message.from_user.id)
+    kb = get_subscription_keyboard(comp_id, comp_name, message.from_user.id, is_active=is_active, auto_renew=auto_renew)
     await message.answer(text, reply_markup=kb)
 
 
@@ -1298,6 +1332,132 @@ async def master_callback_sub(call):
 async def master_callback_pay(call):
     await call.answer()
     await master_cmd_pay(call.message)
+
+
+@master_router.message(Command("offer"))
+@master_router.message(Command("terms"))
+async def master_cmd_offer(message: Message):
+    """Отправка положений публичной оферты с прямой ссылкой на веб-страницу"""
+    offer_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📄 Открыть полный текст оферты в браузере", url=offer_url)],
+            [InlineKeyboardButton(text="💎 Кабинет подписки", callback_data="btn_sub")],
+        ]
+    )
+    await message.answer(OFFER_SUMMARY_TEXT, reply_markup=kb, parse_mode="HTML")
+
+
+@master_router.callback_query(F.data == "btn_offer")
+async def master_cb_offer(cb: CallbackQuery):
+    """Инлайн просмотр условий оферты"""
+    await cb.answer()
+    offer_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📄 Открыть полный текст оферты в браузере", url=offer_url)],
+            [InlineKeyboardButton(text="💎 Кабинет подписки", callback_data="btn_sub")],
+        ]
+    )
+    if cb.message:
+        try:
+            await cb.message.edit_text(OFFER_SUMMARY_TEXT, reply_markup=kb, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    target_bot = cb.bot or master_bot
+    if target_bot:
+        await target_bot.send_message(chat_id=cb.from_user.id, text=OFFER_SUMMARY_TEXT, reply_markup=kb, parse_mode="HTML")
+
+
+@master_router.message(Command("cancel_subscription"))
+async def master_cmd_cancel_subscription(message: Message):
+    """Отмена автопродления подписки в 1 клик через команду"""
+    company = find_company_for_admin(message.from_user.id)
+    comp_id = (company.get("bot_username") if company else None) or str(message.from_user.id)
+    cancel_auto_renew(comp_id, supabase_client)
+
+    sub_info = get_company_subscription(comp_id, company, supabase_client)
+    until = sub_info.get("subscription_until")
+    until_str = until.strftime("%d.%m.%Y") if until else "конца оплаченного периода"
+
+    cancel_text = (
+        "✅ <b>Автопродление подписки успешно отменено в 1 клик!</b>\n\n"
+        "• Никаких дальнейших автоматических списаний производиться не будет.\n"
+        f"• Доступ ко всем возможностям платформы и приёму заявок <b>сохраняется до {until_str}</b>.\n\n"
+        "ℹ️ <i>Согласно п. 3.2 Публичной оферты, услуга считается оказанной в момент предоставления доступа к функционалу платформы.</i>\n\n"
+        "Вы можете в любой момент возобновить автопродление в меню /subscription."
+    )
+    offer_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Возобновить автопродление", callback_data="btn_resume_sub")],
+            [InlineKeyboardButton(text="📄 Публичная оферта", url=offer_url)],
+        ]
+    )
+    await message.answer(cancel_text, reply_markup=kb, parse_mode="HTML")
+
+
+@master_router.callback_query(F.data == "btn_cancel_sub")
+async def master_cb_cancel_sub(cb: CallbackQuery):
+    """Отмена автопродления по инлайн-кнопке в 1 клик"""
+    await cb.answer("Автопродление успешно отключено!")
+    company = find_company_for_admin(cb.from_user.id)
+    comp_id = (company.get("bot_username") if company else None) or str(cb.from_user.id)
+    cancel_auto_renew(comp_id, supabase_client)
+
+    sub_info = get_company_subscription(comp_id, company, supabase_client)
+    until = sub_info.get("subscription_until")
+    until_str = until.strftime("%d.%m.%Y") if until else "конца оплаченного периода"
+
+    confirm_text = (
+        "✅ <b>Автопродление подписки отключено в 1 клик</b>\n\n"
+        "• Следующих автоматических списаний не будет.\n"
+        f"• Ваш бот продолжает работать в полном объёме <b>до {until_str}</b>.\n\n"
+        "ℹ️ <i>Согласно п. 3.2 Публичной оферты, услуга считается оказанной в момент предоставления доступа к функционалу платформы.</i>"
+    )
+    offer_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="🔄 Возобновить автопродление", callback_data="btn_resume_sub")],
+            [InlineKeyboardButton(text="💎 Кабинет подписки", callback_data="btn_sub")],
+            [InlineKeyboardButton(text="📄 Публичная оферта", url=offer_url)],
+        ]
+    )
+    if cb.message:
+        try:
+            await cb.message.edit_text(confirm_text, reply_markup=kb, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    target_bot = cb.bot or master_bot
+    if target_bot:
+        await target_bot.send_message(chat_id=cb.from_user.id, text=confirm_text, reply_markup=kb, parse_mode="HTML")
+
+
+@master_router.callback_query(F.data == "btn_resume_sub")
+async def master_cb_resume_sub(cb: CallbackQuery):
+    """Возобновление автопродления подписки"""
+    await cb.answer("Автопродление возобновлено!")
+    company = find_company_for_admin(cb.from_user.id)
+    comp_id = (company.get("bot_username") if company else None) or str(cb.from_user.id)
+    resume_auto_renew(comp_id, supabase_client)
+
+    text = "🔄 <b>Автопродление успешно включено.</b> Списание произойдёт в день окончания текущего периода."
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="💎 Перейти в кабинет подписки", callback_data="btn_sub")],
+        ]
+    )
+    if cb.message:
+        try:
+            await cb.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+            return
+        except Exception:
+            pass
+    target_bot = cb.bot or master_bot
+    if target_bot:
+        await target_bot.send_message(chat_id=cb.from_user.id, text=text, reply_markup=kb, parse_mode="HTML")
 
 
 @master_router.message(StateFilter(RegisterCompanyFSM.company_name), F.text)
@@ -1916,6 +2076,34 @@ async def favicon_endpoint():
 
 
 # ---------------------------------------------------------------------------
+# Публичная оферта на оказание информационно-технических услуг (подписка)
+# ---------------------------------------------------------------------------
+@app.get("/offer", response_class=HTMLResponse)
+@app.get("/terms", response_class=HTMLResponse)
+async def public_offer_page():
+    """Официальная веб-страница публичной оферты на оказание информационно-технических услуг"""
+    return HTMLResponse(content=get_public_offer_html("РемонтПро"), status_code=200)
+
+
+@app.get("/api/offer")
+async def api_public_offer():
+    """JSON-эндпоинт с ключевыми условиями публичной оферты"""
+    return {
+        "status": "active",
+        "title": "Публичная оферта на оказание информационно-технических услуг",
+        "service_provided_clause": "Услуга считается оказанной в момент предоставления доступа к функционалу платформы",
+        "auto_renewal": {
+            "enabled": True,
+            "period": "30, 90 or 365 days",
+            "cancel_in_one_click": True,
+            "cancel_methods": ["/cancel_subscription", "button in /subscription", "support"],
+        },
+        "plans": SUBSCRIPTION_PLANS,
+        "effective_date": "2026-01-01",
+    }
+
+
+# ---------------------------------------------------------------------------
 # Вебхук Мастер-бота платформы: POST /webhook/master
 # ---------------------------------------------------------------------------
 @app.post("/webhook/master")
@@ -1989,13 +2177,74 @@ async def client_bot_webhook(company_id: str, request: Request):
     _, url_3m = create_payment_url(company_id, comp_name, chat_id, "3m")
     _, url_1y = create_payment_url(company_id, comp_name, chat_id, "1y")
 
-    subscription_keyboard = {
-        "inline_keyboard": [
-            [{"text": "💳 1 месяц — 2 990 ₽", "url": url_1m}],
-            [{"text": "🔥 3 месяца — 7 990 ₽ (-11%)", "url": url_3m}],
-            [{"text": "💎 1 год — 24 990 ₽ (-30%)", "url": url_1y}],
-        ]
-    }
+    offer_web_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+    sub_kb_rows = [
+        [{"text": "💳 1 месяц — 2 990 ₽", "url": url_1m}],
+        [{"text": "🔥 3 месяца — 6 990 ₽ (-22%)", "url": url_3m}],
+        [{"text": "💎 1 год — 22 990 ₽ (Экономия 12 890 ₽)", "url": url_1y}],
+        [{"text": "📄 Публичная оферта", "url": offer_web_url}],
+    ]
+    auto_renew = sub_info.get("auto_renew", True)
+    if is_active:
+        if auto_renew:
+            sub_kb_rows.append([{"text": "❌ Отменить автопродление в 1 клик", "callback_data": "btn_cancel_sub"}])
+        else:
+            sub_kb_rows.append([{"text": "🔄 Возобновить автопродление", "callback_data": "btn_resume_sub"}])
+
+    subscription_keyboard = {"inline_keyboard": sub_kb_rows}
+
+    # Команда /offer и /terms в боте компании
+    if text in ["/offer", "/terms"]:
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": OFFER_SUMMARY_TEXT,
+                        "parse_mode": "HTML",
+                        "reply_markup": {
+                            "inline_keyboard": [
+                                [{"text": "📄 Открыть полный текст оферты в браузере", "url": offer_web_url}]
+                            ]
+                        },
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки /offer в боте {company_id}: {e}")
+        return Response(status_code=status.HTTP_200_OK)
+
+    # Команда /cancel_subscription (отмена подписки в 1 клик)
+    if text in ["/cancel_subscription", "/cancel_sub"]:
+        cancel_auto_renew(company_id, supabase_client)
+        sub_info = get_company_subscription(company_id, company_data, supabase_client)
+        until = sub_info.get("subscription_until")
+        until_str = until.strftime("%d.%m.%Y") if until else "конца оплаченного периода"
+        cancel_msg = (
+            "✅ <b>Автопродление подписки успешно отменено в 1 клик!</b>\n\n"
+            "• Никаких дальнейших автоматических списаний производиться не будет.\n"
+            f"• Доступ ко всем возможностям бота <b>сохраняется до {until_str}</b>.\n\n"
+            "ℹ️ <i>Согласно п. 3.2 Публичной оферты, услуга считается оказанной в момент предоставления доступа к функционалу платформы.</i>"
+        )
+        try:
+            async with httpx.AsyncClient(timeout=10.0) as client:
+                await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={
+                        "chat_id": chat_id,
+                        "text": cancel_msg,
+                        "parse_mode": "HTML",
+                        "reply_markup": {
+                            "inline_keyboard": [
+                                [{"text": "🔄 Возобновить автопродление", "callback_data": "btn_resume_sub"}],
+                                [{"text": "📄 Публичная оферта", "url": offer_web_url}],
+                            ]
+                        },
+                    },
+                )
+        except Exception as e:
+            logger.error(f"Ошибка отправки /cancel_subscription в боте {company_id}: {e}")
+        return Response(status_code=status.HTTP_200_OK)
 
     # Команда /test_pay (тестирование оплаты для прораба/админа)
     if text.startswith("/test_pay"):
@@ -2281,6 +2530,32 @@ async def client_bot_webhook(company_id: str, request: Request):
                     [{"text": "📈 Как получать 3+ заявки в день с Авито", "callback_data": "master_help_avito"}],
                     [{"text": "📄 Договор по смете и защита от споров", "callback_data": "master_help_contract"}],
                     [{"text": "⚙️ Как настроить свои цены", "callback_data": "master_help_pricing"}],
+                ]
+            }
+        elif cb_data == "btn_cancel_sub":
+            cancel_auto_renew(company_id, supabase_client)
+            sub_info = get_company_subscription(company_id, company_data, supabase_client)
+            until = sub_info.get("subscription_until")
+            until_str = until.strftime("%d.%m.%Y") if until else "конца оплаченного периода"
+            response_text = (
+                "✅ <b>Автопродление подписки отключено в 1 клик</b>\n\n"
+                "• Следующих автоматических списаний не будет.\n"
+                f"• Ваш бот продолжает работать в полном объёме <b>до {until_str}</b>.\n\n"
+                "ℹ️ <i>Согласно п. 3.2 Публичной оферты, услуга считается оказанной в момент предоставления доступа к функционалу платформы.</i>"
+            )
+            cat_back_kb = {
+                "inline_keyboard": [
+                    [{"text": "🔄 Возобновить автопродление", "callback_data": "btn_resume_sub"}],
+                    [{"text": "📄 Публичная оферта", "url": offer_web_url}],
+                ]
+            }
+        elif cb_data == "btn_resume_sub":
+            resume_auto_renew(company_id, supabase_client)
+            response_text = "🔄 <b>Автопродление успешно включено.</b> Списание произойдёт в день окончания текущего периода."
+            cat_back_kb = {
+                "inline_keyboard": [
+                    [{"text": "❌ Отменить автопродление в 1 клик", "callback_data": "btn_cancel_sub"}],
+                    [{"text": "📄 Публичная оферта", "url": offer_web_url}],
                 ]
             }
 

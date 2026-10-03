@@ -15,6 +15,7 @@ import { CalculationResult, BookingFormState, CompanyConfig } from '../types';
 import { formatCurrency, triggerHaptic, getTelegramUser } from '../utils/telegram';
 import { createLead } from '../lib/supabase';
 import { PrivacyPolicyModal } from './PrivacyPolicyModal';
+import { PublicOfferModal } from './PublicOfferModal';
 
 interface BookingModalProps {
   result: CalculationResult;
@@ -47,6 +48,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [bookingCode, setBookingCode] = useState('');
   const [error, setError] = useState('');
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
+  const [showOfferModal, setShowOfferModal] = useState(false);
 
   const DATE_OPTIONS = ['Сегодня', 'Завтра', 'В субботу', 'В воскресенье'];
 
@@ -362,7 +364,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       className="mt-0.5 w-4 h-4 rounded border-zinc-300 dark:border-zinc-600 text-zinc-900 focus:ring-zinc-900 cursor-pointer shrink-0"
                     />
                     <span className="text-[11px] text-zinc-500 dark:text-zinc-400 leading-tight">
-                      Согласен на обработку данных в соответствии со{' '}
+                      Согласен на обработку данных по{' '}
                       <button
                         type="button"
                         onClick={(e) => {
@@ -371,9 +373,22 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                           triggerHaptic('light');
                           setShowPrivacyModal(true);
                         }}
-                        className="underline text-zinc-700 dark:text-zinc-300 font-medium"
+                        className="underline text-zinc-700 dark:text-zinc-300 font-medium cursor-pointer"
                       >
-                        152-ФЗ и политикой
+                        152-ФЗ
+                      </button>
+                      {' '}и условиями{' '}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          triggerHaptic('light');
+                          setShowOfferModal(true);
+                        }}
+                        className="underline text-zinc-700 dark:text-zinc-300 font-medium cursor-pointer"
+                      >
+                        публичной оферты
                       </button>
                     </span>
                   </label>
@@ -407,6 +422,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         <PrivacyPolicyModal
           companyName={company.name}
           onClose={() => setShowPrivacyModal(false)}
+        />
+      )}
+
+      {showOfferModal && (
+        <PublicOfferModal
+          companyName={company.name}
+          onClose={() => setShowOfferModal(false)}
         />
       )}
     </>
