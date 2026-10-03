@@ -63,6 +63,7 @@ try:
         resume_auto_renew,
         save_company_subscription,
         save_local_subscriptions,
+        unlock_all_company_leads,
     )
 except ImportError:
     from monetization import (
@@ -84,6 +85,7 @@ except ImportError:
         resume_auto_renew,
         save_company_subscription,
         save_local_subscriptions,
+        unlock_all_company_leads,
     )
 
 try:
@@ -3195,14 +3197,24 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             # Безопасный список выбранных технических опций ремонта (без открытых персональных данных)
             lead_options = list(lead.active_options or [])
 
+            if can_view_full:
+                # При оплаченной подписке или активном триале заявка сохраняется сразу ОТКРЫТОЙ
+                stored_client_name = lead.name or "Клиент"
+                stored_client_phone = clean_phone
+                stored_address = lead.address or "г. Москва"
+            else:
+                # До оплаты подписки (начиная с 4-й заявки) персональные данные шифруются в encrypted_payload
+                stored_client_name = crypto_fields["client_name"]
+                stored_client_phone = crypto_fields["client_phone"]
+                stored_address = crypto_fields["address"]
+
             insert_data = {
                 "company_id": company_uuid,
-                # Защита от утечек: открытый текст в БД категорически исключён
-                "client_name": crypto_fields["client_name"],
-                "name": crypto_fields["name"],
-                "client_phone": crypto_fields["client_phone"],
-                "phone": crypto_fields["phone"],
-                "address": crypto_fields["address"],
+                "client_name": stored_client_name,
+                "name": stored_client_name,
+                "client_phone": stored_client_phone,
+                "phone": stored_client_phone,
+                "address": stored_address,
                 "encrypted_payload": crypto_fields["encrypted_payload"],
                 "contact_channel": lead.communication or "telegram",
                 "preferred_date": lead.preferred_date,
@@ -3466,6 +3478,78 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         "is_locked": not can_view_full,
         "message": "Заявка успешно зарегистрирована",
     }
+
+
+@app.get("/api/leads")
+async def get_company_leads(company_id: str):
+    """
+    Возвращает список заявок строительной компании.
+    При оплаченной подписке гарантирует, что ВСЕ ранее зашифрованные заявки
+    расшифровываются, становятся открытыми в базе данных Supabase и возвращаются
+    с открытыми номерами телефонов, именами и адресами.
+    """
+    company = find_company(company_id)
+    comp_uuid = company.get("id") if company else None
+    uname = company.get("bot_username") if company else company_id
+
+    sub_info = get_company_subscription(uname, company, supabase_client)
+    is_active = sub_info.get("is_active", False)
+
+    # При активной подписке делаем все ранее зашифрованные лиды открытыми в Supabase
+    if is_active and supabase_client:
+        unlock_all_company_leads(uname, comp_uuid=comp_uuid, supabase_client=supabase_client)
+
+    leads_data = []
+    if supabase_client:
+        try:
+            target_ids = []
+            if comp_uuid:
+                target_ids.append(f"company_id.eq.{comp_uuid}")
+            if uname:
+                target_ids.append(f"company_id.eq.{uname.lower()}")
+            or_filter = ",".join(target_ids) if target_ids else f"company_id.eq.{company_id}"
+
+            res = (
+                supabase_client.table("leads")
+                .select("*")
+                .or_(or_filter)
+                .order("created_at", desc=True)
+                .execute()
+            )
+            leads_data = res.data or []
+        except Exception as e:
+            logger.error(f"Ошибка получения заявок компании {company_id}: {e}")
+
+    result = []
+    for l in leads_data:
+        enc_payload = l.get("encrypted_payload")
+        decrypted = decrypt_payload(enc_payload) if enc_payload else {}
+
+        raw_name = decrypted.get("client_name") or l.get("client_name") or l.get("name") or "Клиент"
+        raw_phone = decrypted.get("client_phone") or l.get("client_phone") or l.get("phone") or ""
+        raw_addr = decrypted.get("address") or l.get("address") or l.get("city") or "г. Москва"
+
+        is_locked = (l.get("status") in ["locked", "paywall_locked"]) and not is_active
+
+        if is_locked:
+            out_name = mask_client_name(raw_name)
+            out_phone = mask_client_phone(raw_phone)
+            out_addr = mask_address(raw_addr)
+        else:
+            out_name = raw_name if raw_name != "[ENCRYPTED_AES256]" else "Клиент"
+            out_phone = raw_phone if raw_phone != "[ENCRYPTED_AES256]" else "—"
+            out_addr = raw_addr if raw_addr != "[ENCRYPTED_AES256]" else "г. Москва"
+
+        item = dict(l)
+        item["client_name"] = out_name
+        item["name"] = out_name
+        item["client_phone"] = out_phone
+        item["phone"] = out_phone
+        item["address"] = out_addr
+        item["is_unlocked"] = not is_locked
+        result.append(item)
+
+    return {"leads": result, "is_subscription_active": is_active, "total": len(result)}
 
 
 # ---------------------------------------------------------------------------

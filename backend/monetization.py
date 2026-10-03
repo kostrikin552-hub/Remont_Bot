@@ -672,51 +672,116 @@ async def activate_subscription_for_company(
         except Exception as e:
             logger.error(f"Ошибка начисления бонуса за реферала: {e}")
 
-    # МГНОВЕННАЯ РАЗБЛОКИРОВКА ВСЕХ ЗАБЛОКИРОВАННЫХ ЛИДОВ (locked / paywall_locked)
+    # МГНОВЕННАЯ РАЗБЛОКИРОВКА И РАСШИФРОВКА ВСЕХ ЗАЯВОК В SUPABASE ПРИ ОПЛАТЕ ПОДПИСКИ
+    unlocked_count = unlock_all_company_leads(
+        company_id=company_id,
+        comp_uuid=comp_uuid,
+        supabase_client=supabase_client,
+        target_token=target_token,
+        target_chat=target_chat,
+    )
+
+    return {
+        "success": True,
+        "subscription_until": until_str,
+        "unlocked_leads": unlocked_count,
+        "plan_name": plan_info["name"],
+        "plan_id": actual_plan_id,
+    }
+
+
+def unlock_all_company_leads(
+    company_id: str,
+    comp_uuid: Optional[str] = None,
+    supabase_client: Any = None,
+    target_token: Optional[str] = None,
+    target_chat: Optional[int] = None,
+) -> int:
+    """
+    При оплате подписки делает ВСЕ ранее зашифрованные заявки компании в Supabase ОТКРЫТЫМИ:
+    1. Находит все заявки компании (locked, paywall_locked или содержащие [ENCRYPTED_AES256]).
+    2. Расшифровывает данные из encrypted_payload (мастер-ключом AES-256).
+    3. Записывает открытые client_name, client_phone, address прямо в Supabase (leads) и ставит status='unlocked'.
+    4. Если указаны target_token и target_chat — высылает в Telegram прорабу разблокированные карточки.
+    """
+    if not supabase_client:
+        return 0
+
     unlocked_count = 0
-    if supabase_client:
-        try:
-            # Ищем заблокированные лиды как по UUID компании, так и по bot_username
-            target_ids = []
-            if comp_uuid:
-                target_ids.append(f"company_id.eq.{comp_uuid}")
-            if company_id:
-                target_ids.append(f"company_id.eq.{company_id.lower()}")
-            or_filter = ",".join(target_ids) if target_ids else f"company_id.eq.{company_id}"
+    try:
+        target_ids = []
+        if comp_uuid:
+            target_ids.append(f"company_id.eq.{comp_uuid}")
+        if company_id:
+            target_ids.append(f"company_id.eq.{company_id.lower()}")
+        or_filter = ",".join(target_ids) if target_ids else f"company_id.eq.{company_id}"
 
-            locked_leads_res = (
-                supabase_client.table("leads")
-                .select("*")
-                .or_(or_filter)
-                .in_("status", ["locked", "paywall_locked"])
-                .execute()
+        leads_res = (
+            supabase_client.table("leads")
+            .select("*")
+            .or_(or_filter)
+            .execute()
+        )
+        leads = leads_res.data or []
+
+        for lead in leads:
+            lead_id = lead.get("id")
+            status = lead.get("status")
+            enc_payload = lead.get("encrypted_payload")
+            raw_phone = lead.get("client_phone") or lead.get("phone") or ""
+            raw_name = lead.get("client_name") or lead.get("name") or ""
+            raw_addr = lead.get("address") or ""
+
+            is_locked_or_encrypted = (
+                status in ["locked", "paywall_locked"]
+                or raw_phone == "[ENCRYPTED_AES256]"
+                or raw_name == "[ENCRYPTED_AES256]"
+                or raw_addr == "[ENCRYPTED_AES256]"
             )
-            locked_leads = locked_leads_res.data or []
 
-            if locked_leads:
-                for lead in locked_leads:
-                    lead_id = lead.get("id")
-                    supabase_client.table("leads").update({"status": "unlocked"}).eq("id", lead_id).execute()
+            # Если заявка зашифрована или заблокирована — открываем её
+            if is_locked_or_encrypted:
+                client_name = raw_name if raw_name != "[ENCRYPTED_AES256]" else "Клиент"
+                client_phone = raw_phone if raw_phone != "[ENCRYPTED_AES256]" else ""
+                client_address = raw_addr if raw_addr != "[ENCRYPTED_AES256]" else "г. Москва"
+                client_comment = lead.get("comment") or ""
 
-                    # Расшифровываем реальные данные из AES-256 encrypted_payload
-                    client_name = lead.get("client_name") or lead.get("name") or "Клиент"
-                    client_phone = lead.get("client_phone") or lead.get("phone") or ""
-                    client_address = lead.get("address") or "Не указан"
+                if enc_payload and decrypt_payload:
+                    try:
+                        decrypted = decrypt_payload(enc_payload)
+                        if decrypted:
+                            if decrypted.get("client_name"):
+                                client_name = decrypted["client_name"]
+                            if decrypted.get("client_phone"):
+                                client_phone = decrypted["client_phone"]
+                            if decrypted.get("address"):
+                                client_address = decrypted["address"]
+                            if decrypted.get("comment"):
+                                client_comment = decrypted["comment"]
+                    except Exception as dec_err:
+                        logger.error(f"Ошибка расшифровки лида #{lead_id}: {dec_err}")
 
-                    enc_payload = lead.get("encrypted_payload")
-                    if enc_payload and decrypt_payload:
-                        try:
-                            decrypted = decrypt_payload(enc_payload)
-                            if decrypted:
-                                if decrypted.get("client_name"):
-                                    client_name = decrypted["client_name"]
-                                if decrypted.get("client_phone"):
-                                    client_phone = decrypted["client_phone"]
-                                if decrypted.get("address"):
-                                    client_address = decrypted["address"]
-                        except Exception as dec_err:
-                            logger.error(f"Ошибка расшифровки лида {lead_id}: {dec_err}")
+                # СТРОГО: Записываем ОТКРЫТЫЕ данные в базу Supabase!
+                update_data = {
+                    "status": "unlocked",
+                    "client_name": client_name,
+                    "name": client_name,
+                    "client_phone": client_phone,
+                    "phone": client_phone,
+                    "address": client_address,
+                }
+                if client_comment:
+                    update_data["comment"] = client_comment
 
+                try:
+                    supabase_client.table("leads").update(update_data).eq("id", lead_id).execute()
+                    unlocked_count += 1
+                    logger.info(f"Лид #{lead_id} успешно открыт и расшифрован в Supabase!")
+                except Exception as upd_err:
+                    logger.error(f"Не удалось обновить открытый лид #{lead_id} в Supabase: {upd_err}")
+
+                # Отправляем карточку разблокированного клиента в Telegram
+                if target_token and target_chat:
                     clean_phone = re.sub(r"[^0-9+]", "", client_phone)
                     digits = re.sub(r"[^0-9]", "", clean_phone)
 
@@ -743,30 +808,25 @@ async def activate_subscription_for_company(
                     if digits:
                         ik.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/+{digits}"}])
 
-                    if target_token and target_chat:
-                        try:
-                            async with httpx.AsyncClient(timeout=10.0) as client:
-                                await client.post(
-                                    f"https://api.telegram.org/bot{target_token}/sendMessage",
-                                    json={
-                                        "chat_id": target_chat,
-                                        "text": card_text,
-                                        "parse_mode": "HTML",
-                                        "reply_markup": {"inline_keyboard": ik} if ik else None,
-                                    },
-                                )
-                        except Exception as e:
-                            logger.error(f"Ошибка отправки разблокированного лида {lead_id}: {e}")
+                    try:
+                        import urllib.request
+                        req_data = json.dumps({
+                            "chat_id": target_chat,
+                            "text": card_text,
+                            "parse_mode": "HTML",
+                            "reply_markup": {"inline_keyboard": ik} if ik else None,
+                        }).encode("utf-8")
+                        req = urllib.request.Request(
+                            f"https://api.telegram.org/bot{target_token}/sendMessage",
+                            data=req_data,
+                            headers={"Content-Type": "application/json"},
+                        )
+                        urllib.request.urlopen(req, timeout=8)
+                    except Exception as e:
+                        logger.error(f"Ошибка отправки разблокированного лида {lead_id} в Telegram: {e}")
 
-                unlocked_count = len(locked_leads)
-                logger.info(f"Разблокировано {unlocked_count} лидов для компании {company_id}")
-        except Exception as e:
-            logger.error(f"Ошибка выборки заблокированных лидов: {e}")
+        logger.info(f"Всего открыто {unlocked_count} заявок для компании {company_id} в Supabase")
+    except Exception as e:
+        logger.error(f"Ошибка в unlock_all_company_leads: {e}")
 
-    return {
-        "success": True,
-        "subscription_until": until_str,
-        "unlocked_leads": unlocked_count,
-        "plan_name": plan_info["name"],
-        "plan_id": actual_plan_id,
-    }
+    return unlocked_count
