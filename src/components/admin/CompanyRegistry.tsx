@@ -206,7 +206,7 @@ export function CompanyRegistry({
               )}
               {company.subscriptionStatus === 'trial' && (
                 <span className="px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 text-[10px] font-extrabold shrink-0">
-                  Триал ({company.trialLeadsLeft}/3)
+                  Триал (ост. {company.trialLeadsLeft})
                 </span>
               )}
               {company.subscriptionStatus === 'expired' && (
@@ -373,8 +373,8 @@ export function CompanyRegistry({
                           <Clock className="w-3 h-3" />
                           <span>Триал</span>
                         </span>
-                        <div className="text-[11px] text-zinc-500 mt-1">
-                          Лидов: <span className="font-bold text-zinc-900 dark:text-zinc-100">{company.trialLeadsLeft} из 3</span>
+                        <div className="text-[11px] text-zinc-500 mt-1 font-medium">
+                          Осталось: <span className="font-bold text-zinc-900 dark:text-zinc-100">{company.trialLeadsLeft} {company.trialLeadsLeft === 1 ? 'лид' : (company.trialLeadsLeft >= 2 && company.trialLeadsLeft <= 4 ? 'лида' : 'лидов')}</span>
                         </div>
                       </div>
                     )}

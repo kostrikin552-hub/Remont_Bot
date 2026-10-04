@@ -520,7 +520,11 @@ async def master_menu_stats(message: Message):
         trial_desc = f"• <b>Режим заявок:</b> Безлимитный доступ (осталось {days_left} дн.) 🚀"
     elif trial_used < total_trial:
         status_line = "Бесплатный триал"
-        trial_desc = f"• <b>Осталось бесплатных заявок:</b> {trial_left} из {total_trial} 🎁"
+        lead_word = "заявка" if trial_left == 1 else ("заявки" if 2 <= trial_left <= 4 else "заявок")
+        trial_desc = (
+            f"• <b>Использовано заявок:</b> {trial_used} из {total_trial}\n"
+            f"• <b>Осталось бесплатных заявок:</b> {trial_left} {lead_word} 🎁"
+        )
     else:
         status_line = "🔒 Триал исчерпан"
         trial_desc = f"• <b>Осталось бесплатных заявок:</b> 0 из {total_trial} (контакты маскируются)"
@@ -962,20 +966,39 @@ async def master_cmd_subscription(message: Message):
             f"• <b>Автопродление:</b> {renew_str}"
         )
     elif trial_used < total_trial:
+        lead_word = "заявка" if trial_left == 1 else ("заявки" if 2 <= trial_left <= 4 else "заявок")
+        total_word = "заявки" if 2 <= total_trial <= 4 else "заявок"
         status_line = (
-            f"• <b>Ваш тариф:</b> Пробный период ({total_trial} заявки)\n"
-            f"• <b>Текущий статус:</b> Активен (осталось {trial_left} заявок) 🎁"
+            f"• <b>Ваш тариф:</b> Пробный период ({total_trial} {total_word})\n"
+            f"• <b>Использовано:</b> {trial_used} из {total_trial}\n"
+            f"• <b>Текущий статус:</b> Активен (осталось {trial_left} {lead_word}) 🎁"
         )
     else:
+        total_word = "заявки" if 2 <= total_trial <= 4 else "заявок"
         status_line = (
-            f"• <b>Ваш тариф:</b> Пробный период ({total_trial} заявки)\n"
+            f"• <b>Ваш тариф:</b> Пробный период ({total_trial} {total_word})\n"
+            f"• <b>Использовано:</b> {trial_used} из {total_trial}\n"
             f"• <b>Текущий статус:</b> 🔒 Исчерпан (новые заявки поступают скрытыми)"
+        )
+
+    if is_active:
+        sub_notice = "У вас действует безлимитный доступ ко всем заявкам клиентов без маскировки:\n\n"
+    elif trial_left > 0:
+        lead_word = "заявка" if trial_left == 1 else ("заявки" if 2 <= trial_left <= 4 else "заявок")
+        sub_notice = (
+            f"У вас осталось <b>{trial_left} {lead_word}</b> с открытыми номерами телефонов и адресами. "
+            "Продлите доступ заранее, чтобы не терять клиентов:\n\n"
+        )
+    else:
+        sub_notice = (
+            "Бесплатный пробный период исчерпан. Новые заявки поступают со скрытыми номерами телефонов. "
+            "Выберите тариф для открытия доступа:\n\n"
         )
 
     text = (
         "💎 <b>УПРАВЛЕНИЕ ПОДПИСКОЙ</b>\n\n"
         f"{status_line}\n\n"
-        "После исчерпания 3 заявок новые контакты будут скрыты. Продлите доступ заранее, чтобы не терять клиентов:\n\n"
+        f"{sub_notice}"
         "👇 <b>Выберите подходящий тариф:</b>\n\n"
         "ℹ️ <i>Услуга считается оказанной в момент предоставления доступа к функционалу платформы. "
         "Автопродление можно отменить в 1 клик в любой момент командой /cancel_subscription или кнопкой ниже.</i>"
@@ -1341,7 +1364,8 @@ async def master_cmd_start(message: Message, state: FSMContext, command: Optiona
             until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
             status_desc = f"🟢 Активна (до {until_dt.strftime('%d.%m.%Y')})"
         elif trial_used < total_trial:
-            status_desc = f"🎁 <b>Бесплатный триал:</b> {trial_used}/{total_trial} использовано (осталось {trial_left})"
+            lead_word = "заявка" if trial_left == 1 else ("заявки" if 2 <= trial_left <= 4 else "заявок")
+            status_desc = f"🎁 <b>Бесплатный триал:</b> {trial_used} из {total_trial} использовано (осталось {trial_left} {lead_word})"
         else:
             status_desc = f"🔒 <b>Триал {total_trial} заявок исчерпан</b> (новые контакты маскируются до оплаты)"
 
@@ -3462,7 +3486,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             f"💰 <b>Сумма сметы:</b> <b>{total_cost_str} ₽</b>\n"
             f"{options_str}"
             "━━━━━━━━━━━━━━━━━━\n"
-            "⚠️ <b>3 бесплатные заявки триала исчерпаны!</b>\n"
+            f"⚠️ <b>Бесплатные заявки триала ({total_trial}) исчерпаны!</b>\n"
             f"Клиент только что зафиксировал смету на <b>{total_cost_str} ₽</b> и ожидает звонка для выезда на замер.\n\n"
             "👉 Нажмите кнопку ниже, чтобы открыть полный номер телефона и точный адрес заказчика:"
         )
@@ -3483,13 +3507,21 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         safe_addr = html.escape(str(lead.address or "г. Москва (уточняется на замере)"))
 
         if is_trial:
+            lead_word = "заявка" if trial_left == 1 else ("заявки" if 2 <= trial_left <= 4 else "заявок")
+            if trial_left > 0:
+                left_str = f"Осталось бесплатных заявок: <b>{trial_left} {lead_word}</b>"
+                footer_hint = f"Вам предоставлены полные контакты заказчика. До маскировки осталось {trial_left} {lead_word}."
+            else:
+                left_str = "Это ваша <b>последняя</b> бесплатная заявка триала"
+                footer_hint = "Это была последняя бесплатная заявка триала! Следующие заявки поступят со скрытыми контактами до оплаты подписки (/subscription)."
+
             trial_header = (
                 f"🎁 <b>БЕСПЛАТНЫЙ ТРИАЛ:</b> Заявка {trial_num} из {total_trial}\n"
-                f"<i>(Осталось бесплатных заявок: {trial_left})</i>\n\n"
+                f"<i>({left_str})</i>\n\n"
             )
             trial_footer = (
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"💡 <i>Вам предоставлены полные контакты заказчика в рамках бесплатного триала ({total_trial} заявок).</i>"
+                f"💡 <i>{footer_hint}</i>"
             )
         else:
             sub_until = access_info.get("subscription_until")
