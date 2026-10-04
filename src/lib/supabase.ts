@@ -353,11 +353,6 @@ export async function createLead(payload: LeadPayload): Promise<{
         .insert([
           {
             company_id: isUUID ? payload.company_id : null,
-            client_name: '[ENCRYPTED_AES256]',
-            name: '[ENCRYPTED_AES256]',
-            client_phone: '[ENCRYPTED_AES256]',
-            phone: '[ENCRYPTED_AES256]',
-            address: '[ENCRYPTED_AES256]',
             encrypted_payload: clientEncryptedToken,
             contact_channel: payload.communication || 'telegram',
             preferred_date: payload.preferred_date,

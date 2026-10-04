@@ -244,6 +244,9 @@ def find_company(identifier: str) -> Optional[Dict[str, Any]]:
                 comp["logo_letter"] = comp.get("logo_letter", (comp.get("name") or "Р")[0].upper())
                 comp["admin_chat_id"] = comp.get("admin_chat_id")
                 comp["owner_id"] = comp.get("admin_chat_id") or comp.get("owner_id")
+                comp_token = comp.get("bot_token_encrypted") or comp.get("bot_token")
+                comp["bot_token"] = comp_token
+                comp["bot_token_encrypted"] = comp_token
 
                 COMPANIES_CACHE[c_uuid] = comp
                 if c_uname:
@@ -304,6 +307,9 @@ def find_company_for_admin(admin_chat_id: int) -> Optional[Dict[str, Any]]:
             )
             if res and res.data:
                 comp = res.data[0]
+                comp_token = comp.get("bot_token_encrypted") or comp.get("bot_token")
+                comp["bot_token"] = comp_token
+                comp["bot_token_encrypted"] = comp_token
                 COMPANIES_CACHE[comp["id"]] = comp
                 if comp.get("bot_username"):
                     COMPANIES_CACHE[comp["bot_username"].lower()] = comp
@@ -1870,7 +1876,7 @@ async def master_process_token(message: Message, state: FSMContext):
                 "city": city,
                 "phone": "+7 (800) 555-35-35",
                 "admin_chat_id": admin_chat_id,
-                "bot_token": token_candidate,
+                "bot_token_encrypted": token_candidate,
                 "bot_username": bot_username.lower(),
                 "is_active": True,
             }
@@ -3210,24 +3216,8 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             # Безопасный список выбранных технических опций ремонта (без открытых персональных данных)
             lead_options = list(lead.active_options or [])
 
-            if can_view_full:
-                # При оплаченной подписке или активном триале заявка сохраняется сразу ОТКРЫТОЙ
-                stored_client_name = lead.name or "Клиент"
-                stored_client_phone = clean_phone
-                stored_address = lead.address or "г. Москва"
-            else:
-                # До оплаты подписки (начиная с 4-й заявки) персональные данные шифруются в encrypted_payload
-                stored_client_name = crypto_fields["client_name"]
-                stored_client_phone = crypto_fields["client_phone"]
-                stored_address = crypto_fields["address"]
-
             insert_data = {
                 "company_id": company_uuid,
-                "client_name": stored_client_name,
-                "name": stored_client_name,
-                "client_phone": stored_client_phone,
-                "phone": stored_client_phone,
-                "address": stored_address,
                 "encrypted_payload": crypto_fields["encrypted_payload"],
                 "contact_channel": lead.communication or "telegram",
                 "preferred_date": lead.preferred_date,
@@ -3238,9 +3228,21 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                 "min_cost": float(lead.price_min),
                 "max_cost": float(lead.price_max),
                 "status": lead_db_status,
-                "agreement_152fz": True,
             }
-            db_res = supabase_client.table("leads").insert(insert_data).execute()
+            try:
+                db_res = supabase_client.table("leads").insert(insert_data).execute()
+            except Exception as ins_err:
+                logger.warning(f"Повторная попытка вставки с минимальным набором полей: {ins_err}")
+                clean_minimal = {
+                    "company_id": company_uuid,
+                    "encrypted_payload": crypto_fields["encrypted_payload"],
+                    "status": lead_db_status,
+                    "area_m2": float(lead.area),
+                    "housing_type": "Новостройка" if lead.property_type == "new" else "Вторичка",
+                    "repair_type": lead.renovation_class,
+                }
+                db_res = supabase_client.table("leads").insert(clean_minimal).execute()
+
             if db_res.data and len(db_res.data) > 0:
                 lead_id = str(db_res.data[0].get("id", lead_id))
             logger.info(f"Лид {lead_id} (статус={lead_db_status}, full={can_view_full}, AES-256 encrypted) успешно записан в Supabase.")

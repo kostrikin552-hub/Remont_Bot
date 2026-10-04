@@ -588,7 +588,7 @@ async def activate_subscription_for_company(
                 if not admin_chat_id:
                     admin_chat_id = res.data.get("admin_chat_id")
                 if not bot_token:
-                    bot_token = res.data.get("bot_token")
+                    bot_token = res.data.get("bot_token_encrypted") or res.data.get("bot_token")
         except Exception as e:
             logger.error(f"Ошибка поиска компании при активации: {e}")
 
@@ -761,24 +761,17 @@ def unlock_all_company_leads(
                     except Exception as dec_err:
                         logger.error(f"Ошибка расшифровки лида #{lead_id}: {dec_err}")
 
-                # СТРОГО: Записываем ОТКРЫТЫЕ данные в базу Supabase!
+                # Лид помечается как unlocked (все ПДн надёжно зашифрованы в encrypted_payload по 152-ФЗ РФ)
                 update_data = {
                     "status": "unlocked",
-                    "client_name": client_name,
-                    "name": client_name,
-                    "client_phone": client_phone,
-                    "phone": client_phone,
-                    "address": client_address,
                 }
-                if client_comment:
-                    update_data["comment"] = client_comment
 
                 try:
                     supabase_client.table("leads").update(update_data).eq("id", lead_id).execute()
                     unlocked_count += 1
-                    logger.info(f"Лид #{lead_id} успешно открыт и расшифрован в Supabase!")
+                    logger.info(f"Лид #{lead_id} успешно открыт и разблокирован в Supabase!")
                 except Exception as upd_err:
-                    logger.error(f"Не удалось обновить открытый лид #{lead_id} в Supabase: {upd_err}")
+                    logger.error(f"Не удалось обновить статус лида #{lead_id} в Supabase: {upd_err}")
 
                 # Отправляем карточку разблокированного клиента в Telegram
                 if target_token and target_chat:
