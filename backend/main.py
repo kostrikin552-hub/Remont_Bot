@@ -2563,7 +2563,8 @@ async def client_bot_webhook(company_id: str, request: Request):
     # Команда /subscription (кабинет подписки)
     if text in ["/subscription", "/sub", "/tariff", "/tariffs", "/pay"]:
         trial_used = sub_info.get("trial_leads_used", 0)
-        trial_left = max(0, 3 - trial_used)
+        total_trial = sub_info.get("total_trial_limit", 3)
+        trial_left = max(0, total_trial - trial_used)
         if is_active and until:
             until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
             status_desc = (
@@ -2571,17 +2572,17 @@ async def client_bot_webhook(company_id: str, request: Request):
                 f"📅 Срок действия: до <b>{until_dt.strftime('%d.%m.%Y')}</b> (осталось {days_left} дн.)\n"
                 f"🚀 <b>Приём заявок:</b> Без ограничений (все контакты клиентов открыты)."
             )
-        elif trial_used < 3:
+        elif trial_used < total_trial:
             status_desc = (
                 f"🎁 <b>Статус: Бесплатный триал (Usage-Based Freemium)</b>\n"
-                f"📊 <b>Использовано заявок:</b> {trial_used} из 3\n"
+                f"📊 <b>Использовано заявок:</b> {trial_used} из {total_trial}\n"
                 f"⚡️ <b>Осталось полных бесплатных заявок:</b> {trial_left}\n"
-                f"💡 <i>Первые 3 заявки приходят с полными номерами телефонов и точными адресами. "
-                f"Заявка 4 и далее поступает с замаскированным телефоном и адресом до оплаты подписки.</i>"
+                f"💡 <i>Первые {total_trial} заявки приходят с полными номерами телефонов и точными адресами. "
+                f"Заявка {total_trial + 1} и далее поступает с замаскированным телефоном и адресом до оплаты подписки.</i>"
             )
         else:
             status_desc = (
-                "🔒 <b>Статус: 3 бесплатные заявки триала исчерпаны!</b>\n"
+                f"🔒 <b>Статус: {total_trial} бесплатных заявок триала исчерпаны!</b>\n"
                 "⚠️ Новые заявки поступают с замаскированными контактами и адресом (+7 (999) ***-**-42).\n"
                 "Для снятия маски и получения прямых контактов клиентов выберите тариф:"
             )
@@ -3352,6 +3353,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     is_paid = access_info.get("is_paid", False)
     trial_num = access_info.get("trial_num", 1)
     trial_left = access_info.get("trial_left", 0)
+    total_trial = access_info.get("total_trial_limit", TRIAL_LEADS_COUNT)
     lead_db_status = access_info.get("lead_status", "new")  # 'new' (полный доступ) или 'locked' (замаскированный)
 
     # 3. Нормализация телефона клиента для шифрования и уведомлений
@@ -3482,12 +3484,12 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
 
         if is_trial:
             trial_header = (
-                f"🎁 <b>БЕСПЛАТНЫЙ ТРИАЛ:</b> Заявка {trial_num} из {TRIAL_LEADS_COUNT}\n"
+                f"🎁 <b>БЕСПЛАТНЫЙ ТРИАЛ:</b> Заявка {trial_num} из {total_trial}\n"
                 f"<i>(Осталось бесплатных заявок: {trial_left})</i>\n\n"
             )
             trial_footer = (
                 f"━━━━━━━━━━━━━━━━━━\n"
-                f"💡 <i>Вам предоставлены полные контакты заказчика в рамках бесплатного триала (3 заявки).</i>"
+                f"💡 <i>Вам предоставлены полные контакты заказчика в рамках бесплатного триала ({total_trial} заявок).</i>"
             )
         else:
             sub_until = access_info.get("subscription_until")

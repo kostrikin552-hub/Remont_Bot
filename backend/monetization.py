@@ -177,6 +177,18 @@ def get_company_subscription(
     - trial_leads_left: int (сколько бесплатных заявок осталось)
     - can_receive_unmasked: bool (True если подписка активна или действует триал)
     """
+    # Нормализуем все алиасы идентификатора компании
+    aliases = []
+    if company_identifier:
+        s = str(company_identifier).strip()
+        aliases.extend([s.lower(), s.replace("@", "").lower(), f"@{s.replace('@', '').lower()}"])
+    if company:
+        for fld in ("id", "uuid", "bot_username"):
+            val = company.get(fld)
+            if val:
+                s = str(val).strip()
+                aliases.extend([s.lower(), s.replace("@", "").lower(), f"@{s.replace('@', '').lower()}"])
+    unique_aliases = list(dict.fromkeys(aliases))
     key = str(company_identifier).lower()
     comp_uuid = None
     if company:
@@ -207,19 +219,44 @@ def get_company_subscription(
         if "trial_leads_used" in company and company["trial_leads_used"] is not None:
             sub_data["trial_leads_used"] = int(company["trial_leads_used"])
 
-    # 2. Проверяем локальный кэш
-    for search_key in (key, comp_uuid):
-        if search_key and search_key in SUBSCRIPTIONS_CACHE:
+    # 2. Проверяем локальный кэш по всем алиасам
+    for search_key in unique_aliases:
+        if search_key in SUBSCRIPTIONS_CACHE:
             cached = SUBSCRIPTIONS_CACHE[search_key]
-            if "subscription_status" in cached:
+            if "subscription_status" in cached and not sub_data["subscription_status"]:
                 sub_data["subscription_status"] = cached["subscription_status"]
-            if "subscription_until" in cached and cached["subscription_until"]:
+            if "subscription_until" in cached and cached["subscription_until"] and not sub_data["subscription_until"]:
                 sub_data["subscription_until"] = parse_iso_datetime(cached["subscription_until"])
             if "plan_id" in cached:
                 sub_data["plan_id"] = cached["plan_id"]
             if "trial_leads_used" in cached:
                 sub_data["trial_leads_used"] = max(sub_data["trial_leads_used"], int(cached["trial_leads_used"]))
-            break
+
+    # 2.5 Подсчитываем реальное количество заявок в Supabase (единый источник истины)
+    if supabase_client:
+        try:
+            target_clauses = []
+            for a in unique_aliases:
+                if len(a) >= 2:
+                    target_clauses.append(f"company_id.eq.{a}")
+            if target_clauses:
+                leads_res = (
+                    supabase_client.table("leads")
+                    .select("id, status")
+                    .or_(",".join(target_clauses))
+                    .execute()
+                )
+                if leads_res and leads_res.data is not None:
+                    db_leads = leads_res.data
+                    unmasked_count = sum(1 for l in db_leads if l.get("status") != "locked")
+                    sub_data["trial_leads_used"] = max(sub_data["trial_leads_used"], unmasked_count)
+                    # Синхронизируем во всех алиасах кэша
+                    for a in unique_aliases:
+                        if a not in SUBSCRIPTIONS_CACHE:
+                            SUBSCRIPTIONS_CACHE[a] = {}
+                        SUBSCRIPTIONS_CACHE[a]["trial_leads_used"] = sub_data["trial_leads_used"]
+        except Exception as db_e:
+            logger.debug(f"Не удалось подсчитать лиды из Supabase: {db_e}")
 
     # 3. Валидируем активность платной подписки по дате
     now = datetime.now(timezone.utc)
@@ -245,8 +282,8 @@ def get_company_subscription(
             bonus_leads = int(company["bonus_leads"])
         except (ValueError, TypeError):
             bonus_leads = 0
-    for search_key in (key, comp_uuid):
-        if search_key and search_key in SUBSCRIPTIONS_CACHE:
+    for search_key in unique_aliases:
+        if search_key in SUBSCRIPTIONS_CACHE:
             if "bonus_leads" in SUBSCRIPTIONS_CACHE[search_key]:
                 bonus_leads = max(bonus_leads, int(SUBSCRIPTIONS_CACHE[search_key]["bonus_leads"]))
 
@@ -277,12 +314,21 @@ def check_and_consume_lead_access(
     - Если триал не исчерпан (заявки 1, 2, 3) -> full access + инкрементирует счётчик триала
     - Если триал исчерпан и нет оплаты -> masked access (Soft Paywall)
     """
-    key = str(company_identifier).lower()
-    comp_uuid = None
+    # Собираем все возможные алиасы идентификатора компании
+    aliases = []
+    if company_identifier:
+        s = str(company_identifier).strip()
+        aliases.extend([s.lower(), s.replace("@", "").lower(), f"@{s.replace('@', '').lower()}"])
     if company:
-        comp_uuid = str(company.get("uuid") or company.get("id") or "").lower()
+        for fld in ("id", "uuid", "bot_username"):
+            val = company.get(fld)
+            if val:
+                s = str(val).strip()
+                aliases.extend([s.lower(), s.replace("@", "").lower(), f"@{s.replace('@', '').lower()}"])
+    unique_aliases = list(dict.fromkeys(aliases))
 
     sub_info = get_company_subscription(company_identifier, company, supabase_client)
+    total_limit = sub_info.get("total_trial_limit", TRIAL_LEADS_COUNT)
 
     # Вариант А: Оплаченная подписка активна
     if sub_info.get("is_active"):
@@ -293,33 +339,47 @@ def check_and_consume_lead_access(
             "lead_status": "new",
             "trial_num": 0,
             "trial_left": 0,
+            "total_trial_limit": total_limit,
             "subscription_until": sub_info.get("subscription_until"),
         }
 
     # Вариант Б: Бесплатный триал (базовые заявки + реферальные бонусы)
     trial_used = sub_info.get("trial_leads_used", 0)
-    total_limit = sub_info.get("total_trial_limit", TRIAL_LEADS_COUNT)
     if trial_used < total_limit:
         new_used = trial_used + 1
         new_left = max(0, total_limit - new_used)
 
-        # Обновляем кэш
-        if key not in SUBSCRIPTIONS_CACHE:
-            SUBSCRIPTIONS_CACHE[key] = {}
-        SUBSCRIPTIONS_CACHE[key]["trial_leads_used"] = new_used
-        if comp_uuid:
-            if comp_uuid not in SUBSCRIPTIONS_CACHE:
-                SUBSCRIPTIONS_CACHE[comp_uuid] = {}
-            SUBSCRIPTIONS_CACHE[comp_uuid]["trial_leads_used"] = new_used
+        # Обновляем кэш по ВСЕМ алиасам компании
+        for a in unique_aliases:
+            if a not in SUBSCRIPTIONS_CACHE:
+                SUBSCRIPTIONS_CACHE[a] = {}
+            SUBSCRIPTIONS_CACHE[a]["trial_leads_used"] = new_used
+            SUBSCRIPTIONS_CACHE[a]["total_trial_limit"] = total_limit
         save_local_subscriptions()
 
-        # Сохраняем использование в кэше и файле (в companies нет колонки trial_leads_used)
+        # Сохраняем актуальный счетчик в Supabase
+        if supabase_client:
+            try:
+                target_comp_id = (company.get("id") or company.get("uuid")) if company else None
+                if target_comp_id:
+                    supabase_client.table("companies").update({
+                        "trial_leads_used": new_used
+                    }).eq("id", str(target_comp_id)).execute()
+                elif company_identifier:
+                    clean_id = str(company_identifier).replace("@", "")
+                    supabase_client.table("companies").update({
+                        "trial_leads_used": new_used
+                    }).or_(f"bot_username.eq.{clean_id},id.eq.{clean_id}").execute()
+            except Exception as up_err:
+                logger.debug(f"Ошибка сохранения trial_leads_used в Supabase: {up_err}")
+
         return {
             "can_view_full": True,
             "is_paid": False,
             "is_trial": True,
             "trial_num": new_used,
             "trial_left": new_left,
+            "total_trial_limit": total_limit,
             "lead_status": "new",
             "subscription_until": None,
         }
@@ -331,6 +391,7 @@ def check_and_consume_lead_access(
         "is_trial": False,
         "trial_num": trial_used,
         "trial_left": 0,
+        "total_trial_limit": total_limit,
         "lead_status": "locked",
         "subscription_until": None,
     }

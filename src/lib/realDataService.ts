@@ -49,6 +49,10 @@ export async function fetchRealCompanies(): Promise<TenantCompany[]> {
           const daysOld = Math.floor((Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24));
           const daysLeft = Math.max(0, 30 - (daysOld % 30));
 
+          const totalTrialLimit = 3 + Number(c.bonus_leads || 0);
+          const usedCount = c.trial_leads_used !== undefined && c.trial_leads_used !== null ? Number(c.trial_leads_used) : stats.count;
+          const calculatedLeft = Math.max(0, totalTrialLimit - usedCount);
+
           return {
             id: c.id,
             name: c.name || 'Строительная Компания',
@@ -59,7 +63,7 @@ export async function fetchRealCompanies(): Promise<TenantCompany[]> {
             botUsername: c.bot_username || 'remont_pro_bot',
             subscriptionStatus: (c.subscription_status as any) || (daysLeft > 0 ? 'active' : 'trial'),
             daysLeft: Number(c.days_left ?? daysLeft),
-            trialLeadsLeft: Number(c.trial_leads_left ?? (stats.count >= 3 ? 0 : 3 - stats.count)),
+            trialLeadsLeft: Number(c.trial_leads_left ?? calculatedLeft),
             totalLeads: stats.count,
             revenueEst: stats.sum > 0 ? stats.sum : 0,
             registeredAt: createdAtDate.toISOString().split('T')[0],
