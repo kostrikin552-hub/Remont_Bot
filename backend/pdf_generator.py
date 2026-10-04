@@ -34,42 +34,73 @@ except ImportError:
     HAS_REPORTLAB = False
 
 
+import threading
+
+_FONTS_LOCK = threading.Lock()
+_FONTS_REGISTERED = False
+_CACHED_REGULAR_FONT = "Helvetica"
+_CACHED_BOLD_FONT = "Helvetica-Bold"
+
+
 def _register_fonts():
-    """Регистрирует шрифты с поддержкой кириллицы (FreeSans или DejaVuSans)"""
+    """Потокобезопасно регистрирует шрифты с поддержкой кириллицы (FreeSans или DejaVuSans)"""
+    global _FONTS_REGISTERED, _CACHED_REGULAR_FONT, _CACHED_BOLD_FONT
+
     if not HAS_REPORTLAB:
-        return None, None
+        return "Helvetica", "Helvetica-Bold"
 
-    candidate_fonts = [
-        # 1. Локальные шрифты в проекте
-        (
-            os.path.join(os.path.dirname(__file__), "fonts", "FreeSans.ttf"),
-            os.path.join(os.path.dirname(__file__), "fonts", "FreeSansBold.ttf"),
-        ),
-        # 2. Системные шрифты Linux
-        (
-            "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-            "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
-        ),
-        (
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
-        ),
-    ]
+    if _FONTS_REGISTERED:
+        return _CACHED_REGULAR_FONT, _CACHED_BOLD_FONT
 
-    for regular_path, bold_path in candidate_fonts:
-        if os.path.exists(regular_path):
-            try:
-                regular_name = "CustomCyrillic"
-                bold_name = "CustomCyrillicBold" if os.path.exists(bold_path) else regular_name
-                pdfmetrics.registerFont(TTFont(regular_name, regular_path))
-                if os.path.exists(bold_path):
-                    pdfmetrics.registerFont(TTFont(bold_name, bold_path))
-                return regular_name, bold_name
-            except Exception as e:
-                if logger_defined:
-                    logger.debug(f"Ошибка загрузки шрифта {regular_path}: {e}")
+    with _FONTS_LOCK:
+        if _FONTS_REGISTERED:
+            return _CACHED_REGULAR_FONT, _CACHED_BOLD_FONT
 
-    return "Helvetica", "Helvetica-Bold"
+        candidate_fonts = [
+            # 1. Локальные шрифты в проекте
+            (
+                os.path.join(os.path.dirname(__file__), "fonts", "FreeSans.ttf"),
+                os.path.join(os.path.dirname(__file__), "fonts", "FreeSansBold.ttf"),
+            ),
+            # 2. Системные шрифты Linux
+            (
+                "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+                "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf",
+            ),
+            (
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+                "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf",
+            ),
+        ]
+
+        for regular_path, bold_path in candidate_fonts:
+            if os.path.exists(regular_path):
+                try:
+                    regular_name = "CustomCyrillic"
+                    bold_name = "CustomCyrillicBold" if os.path.exists(bold_path) else regular_name
+                    try:
+                        pdfmetrics.getFont(regular_name)
+                    except KeyError:
+                        pdfmetrics.registerFont(TTFont(regular_name, regular_path))
+
+                    if os.path.exists(bold_path):
+                        try:
+                            pdfmetrics.getFont(bold_name)
+                        except KeyError:
+                            pdfmetrics.registerFont(TTFont(bold_name, bold_path))
+
+                    _CACHED_REGULAR_FONT = regular_name
+                    _CACHED_BOLD_FONT = bold_name
+                    _FONTS_REGISTERED = True
+                    return _CACHED_REGULAR_FONT, _CACHED_BOLD_FONT
+                except Exception as e:
+                    if logger_defined:
+                        logger.debug(f"Ошибка загрузки шрифта {regular_path}: {e}")
+
+        _CACHED_REGULAR_FONT = "Helvetica"
+        _CACHED_BOLD_FONT = "Helvetica-Bold"
+        _FONTS_REGISTERED = True
+        return _CACHED_REGULAR_FONT, _CACHED_BOLD_FONT
 
 
 def generate_estimate_pdf(lead: Dict[str, Any], company: Optional[Dict[str, Any]] = None) -> bytes:

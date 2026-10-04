@@ -151,6 +151,14 @@ except ImportError:
     except Exception:
         generate_estimate_pdf = None
 
+try:
+    from backend.file_queue import file_queue
+except ImportError:
+    try:
+        from file_queue import file_queue
+    except Exception:
+        file_queue = None
+
 # ---------------------------------------------------------------------------
 # Логирование
 # ---------------------------------------------------------------------------
@@ -2178,7 +2186,16 @@ app.add_middleware(
 # ---------------------------------------------------------------------------
 @app.get("/health")
 async def health_check():
-    return {"status": "ok"}
+    stats = file_queue.get_stats() if file_queue else {"available": False}
+    return {"status": "ok", "file_queue": stats}
+
+
+@app.get("/api/queue/stats")
+async def queue_stats_endpoint():
+    """Метрики асинхронной очереди генерации файлов"""
+    if file_queue:
+        return file_queue.get_stats()
+    return {"status": "queue_not_configured"}
 
 
 @app.get("/favicon.ico")
@@ -3157,6 +3174,78 @@ async def export_estimate_endpoint(
     return HTMLResponse(content=html_content)
 
 
+@app.get("/api/estimate/{lead_id}/pdf")
+@app.get("/api/leads/{lead_id}/pdf")
+async def download_lead_pdf_endpoint(lead_id: str, company_id: Optional[str] = None):
+    """Скачивание сметы в формате PDF через защищенную асинхронную очередь генерации"""
+    if not file_queue:
+        raise HTTPException(status_code=503, detail="Очередь генерации файлов недоступна")
+
+    lead_data = None
+    company = None
+    if company_id:
+        company = find_company(company_id)
+
+    if supabase_client:
+        try:
+            res = (
+                supabase_client.table("leads")
+                .select("*")
+                .eq("id", lead_id)
+                .maybe_single()
+                .execute()
+            )
+            if res and res.data:
+                raw_lead = res.data
+                enc_payload = raw_lead.get("encrypted_payload")
+                decrypted = decrypt_payload(enc_payload) if enc_payload else {}
+                c_id = raw_lead.get("company_id")
+                if c_id and not company:
+                    company = find_company(str(c_id))
+                lead_data = {
+                    "id": str(raw_lead.get("id")),
+                    "client_name": decrypted.get("client_name") or "Клиент",
+                    "client_phone": decrypted.get("client_phone") or "",
+                    "address": decrypted.get("address") or "г. Москва",
+                    "preferred_date": raw_lead.get("preferred_date") or "В ближайшее время",
+                    "housing_type": raw_lead.get("housing_type") or "Новостройка",
+                    "repair_type": raw_lead.get("repair_type") or "Капитальный",
+                    "area_m2": float(raw_lead.get("area_m2") or 50.0),
+                    "total_base_cost": float(raw_lead.get("max_cost") or raw_lead.get("min_cost") or 500000),
+                    "min_cost": float(raw_lead.get("min_cost") or 450000),
+                    "max_cost": float(raw_lead.get("max_cost") or 550000),
+                    "options": raw_lead.get("options") or [],
+                    "contact_channel": raw_lead.get("contact_channel") or "telegram",
+                }
+        except Exception as e:
+            logger.error(f"Ошибка загрузки лида #{lead_id} для PDF: {e}")
+
+    if not lead_data:
+        lead_data = {
+            "id": lead_id,
+            "client_name": "Заказчик",
+            "client_phone": "+7 (900) 000-00-00",
+            "address": "г. Москва",
+            "preferred_date": "В ближайшее время",
+            "housing_type": "Новостройка",
+            "repair_type": "Капитальный",
+            "area_m2": 50.0,
+            "total_base_cost": 500000,
+            "min_cost": 450000,
+            "max_cost": 550000,
+        }
+
+    pdf_bytes = await file_queue.generate_pdf(lead_data, company, timeout=20.0)
+    if not pdf_bytes:
+        raise HTTPException(status_code=500, detail="Не удалось сгенерировать PDF файл")
+
+    return Response(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="Smeta_{lead_id}.pdf"'},
+    )
+
+
 # ---------------------------------------------------------------------------
 # Г. Эндпоинт приема лидов из Mini App: POST /api/leads
 # ---------------------------------------------------------------------------
@@ -3382,31 +3471,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         if MASTER_BOT_TOKEN:
             bot_targets.append(("master_bot", MASTER_BOT_TOKEN))
 
-        # Генерируем детальный сметный PDF документ со всеми расчетами и позициями
-        pdf_bytes = None
-        if can_view_full and generate_estimate_pdf:
-            try:
-                lead_pdf_data = {
-                    "id": lead_id,
-                    "client_name": lead.name,
-                    "client_phone": lead.phone,
-                    "address": lead.address,
-                    "preferred_date": lead.preferred_date,
-                    "housing_type": housing_type,
-                    "repair_type": lead.renovation_class,
-                    "area_m2": lead.area,
-                    "total_base_cost": total_cost_num,
-                    "min_cost": lead.price_min,
-                    "max_cost": lead.price_max,
-                    "options": lead_options,
-                    "contact_channel": lead.communication or "telegram",
-                }
-                pdf_bytes = generate_estimate_pdf(lead_pdf_data, company)
-                if pdf_bytes:
-                    logger.info(f"Сформирован детальный PDF для сметы #{lead_id} (размер: {len(pdf_bytes)} байт)")
-            except Exception as pdf_ex:
-                logger.error(f"Не удалось сформировать PDF сметы: {pdf_ex}")
-
+        # 5. Мгновенная отправка текстовой карточки заявки прорабу
         try:
             async with httpx.AsyncClient(timeout=15.0) as client:
                 for target_name, token in bot_targets:
@@ -3428,30 +3493,6 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                                 f"Уведомление прорабу (chat_id={admin_chat_id}) успешно доставлено через {target_name}: 200 OK"
                             )
                             delivered = True
-
-                            # Отправляем прикрепленный детальный PDF файл со всеми данными
-                            if pdf_bytes:
-                                try:
-                                    pdf_data = {
-                                        "chat_id": admin_chat_id,
-                                        "caption": f"📄 <b>Детальная смета по заявке #{lead_id}</b>\nОбъект: {lead.area} м² ({housing_type})\nКлиент: {safe_name}, {safe_phone}",
-                                        "parse_mode": "HTML",
-                                    }
-                                    pdf_files = {
-                                        "document": (f"Смета_{lead_id}.pdf", pdf_bytes, "application/pdf")
-                                    }
-                                    doc_res = await client.post(
-                                        f"https://api.telegram.org/bot{token}/sendDocument",
-                                        data=pdf_data,
-                                        files=pdf_files,
-                                    )
-                                    if doc_res.status_code == 200:
-                                        logger.info(f"PDF-смета #{lead_id} успешно доставлена через {target_name}: 200 OK")
-                                    else:
-                                        logger.warning(f"Не удалось отправить PDF через {target_name}: {doc_res.status_code} {doc_res.text}")
-                                except Exception as doc_err:
-                                    logger.error(f"Исключение отправки PDF через {target_name}: {doc_err}")
-
                             break
                         else:
                             logger.warning(
@@ -3482,6 +3523,40 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                 logger.error(f"Не удалось доставить уведомление прорабу {admin_chat_id} ни через одного бота!")
         except Exception as e:
             logger.error(f"Не удалось отправить уведомление прорабу: {e}")
+
+        # 6. Асинхронная очередь генерации и отправки PDF-сметы (max 2 потока, не блокирует бота)
+        if can_view_full and file_queue:
+            lead_pdf_data = {
+                "id": lead_id,
+                "client_name": lead.name,
+                "client_phone": lead.phone,
+                "address": lead.address,
+                "preferred_date": lead.preferred_date,
+                "housing_type": housing_type,
+                "repair_type": lead.renovation_class,
+                "area_m2": lead.area,
+                "total_base_cost": total_cost_num,
+                "min_cost": lead.price_min,
+                "max_cost": lead.price_max,
+                "options": lead_options,
+                "contact_channel": lead.communication or "telegram",
+            }
+            pdf_caption = (
+                f"📄 <b>Детальная смета по заявке #{lead_id}</b>\n"
+                f"Объект: {lead.area} м² ({housing_type})\n"
+                f"Клиент: {safe_name}, {safe_phone}"
+            )
+            # Ставим задачу в асинхронную очередь с пулом воркеров
+            asyncio.create_task(
+                file_queue.enqueue_and_send_telegram_pdf(
+                    lead_id=lead_id,
+                    lead_data=lead_pdf_data,
+                    company=company,
+                    bot_targets=bot_targets,
+                    admin_chat_id=admin_chat_id,
+                    caption=pdf_caption,
+                )
+            )
     else:
         logger.info(
             f"Заявка #{lead_id} принята (admin_chat_id для компании {lead.company_id} не сконфигурирован в Telegram)"
