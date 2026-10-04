@@ -2198,6 +2198,78 @@ async def queue_stats_endpoint():
     return {"status": "queue_not_configured"}
 
 
+@app.get("/api/cron/ping")
+@app.get("/api/cron/keepalive")
+async def cron_keepalive_endpoint():
+    """
+    Легковесный эндпоинт для внешних планировщиков (cron-job.org, UptimeRobot).
+    Предотвращает засыпание (Cold Start / Scale-to-Zero) контейнера бота.
+    """
+    return {
+        "status": "alive",
+        "timestamp": int(time.time()),
+        "uptime": "ok",
+        "queue": file_queue.get_stats() if file_queue else None,
+    }
+
+
+@app.get("/api/cron/check-subscriptions")
+async def cron_check_subscriptions_endpoint():
+    """
+    Фоновая проверка истекающих подписок строительных компаний (1 раз в сутки через cron-job.org).
+    Заблаговременно напоминает прорабу о необходимости продления.
+    """
+    notified = 0
+    now = datetime.now(timezone.utc)
+    if supabase_client:
+        try:
+            res = (
+                supabase_client.table("companies")
+                .select("id, name, admin_chat_id, bot_token_encrypted, bot_username, subscription_status, subscription_until")
+                .eq("subscription_status", "active")
+                .execute()
+            )
+            companies = res.data or []
+            for c in companies:
+                sub_until_raw = c.get("subscription_until")
+                chat_id = c.get("admin_chat_id")
+                if not sub_until_raw or not chat_id:
+                    continue
+                try:
+                    dt = datetime.fromisoformat(sub_until_raw.replace("Z", "+00:00"))
+                    diff_hours = (dt - now).total_seconds() / 3600
+                    if 0 < diff_hours <= 48:
+                        token = c.get("bot_token_encrypted") or MASTER_BOT_TOKEN
+                        if token:
+                            msg_text = (
+                                f"⏳ <b>Внимание: ваша подписка истекает через {int(diff_hours)} ч.!</b>\n"
+                                f"━━━━━━━━━━━━━━━━━━\n"
+                                f"Компания: <b>{c.get('name', 'Строительная компания')}</b>\n"
+                                f"Дата окончания: <b>{dt.strftime('%d.%m.%Y %H:%M')} UTC</b>\n\n"
+                                f"Продлите тариф вовремя в меню бота /subscription, чтобы не пропустить входящие заявки клиентов."
+                            )
+                            # Быстрая отправка через urllib без блокировок
+                            url = f"https://api.telegram.org/bot{token}/sendMessage"
+                            payload = json.dumps({"chat_id": chat_id, "text": msg_text, "parse_mode": "HTML"}).encode("utf-8")
+                            req = urllib.request.Request(url, data=payload, headers={"Content-Type": "application/json"}, method="POST")
+                            try:
+                                with urllib.request.urlopen(req, timeout=5) as r:
+                                    if r.status == 200:
+                                        notified += 1
+                            except Exception:
+                                pass
+                except Exception as comp_err:
+                    logger.debug(f"Ошибка проверки подписки: {comp_err}")
+        except Exception as e:
+            logger.error(f"Ошибка в cron check-subscriptions: {e}")
+
+    return {
+        "status": "ok",
+        "checked_at": now.isoformat(),
+        "notified_count": notified,
+    }
+
+
 @app.get("/favicon.ico")
 async def favicon_endpoint():
     return Response(status_code=status.HTTP_204_NO_CONTENT)
