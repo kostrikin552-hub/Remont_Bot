@@ -2680,7 +2680,7 @@ async def client_bot_webhook(company_id: str, request: Request):
         "keyboard": [
             [{"text": "📱 Рассчитать смету онлайн", "web_app": {"url": app_url}}],
             [{"text": "📋 Прайс и смета работ"}, {"text": "📐 Бесплатный замер (0 ₽)"}],
-            [{"text": "💬 Связаться с прорабом"}, {"text": "❓ Вопросы и гарантии"}],
+            [{"text": "❓ Вопросы и гарантии"}],
         ],
         "resize_keyboard": True,
         "is_persistent": True,
@@ -2786,8 +2786,8 @@ async def client_bot_webhook(company_id: str, request: Request):
             )
         elif cb_data == "contact_manager":
             response_text = (
-                f"📞 <b>Прямой телефон компании:</b> <code>{company_phone}</code>\n"
-                "Дежурный инженер ответит на все вопросы с 09:00 до 21:00 без выходных."
+                "Дежурный инженер ответит на все вопросы с 09:00 до 21:00 без выходных. "
+                "Вы можете рассчитать смету и заказать бесплатный замер онлайн в калькуляторе."
             )
         elif cb_data.startswith("preset_") or cb_data in ["preset_moscow", "preset_spb", "preset_regions"]:
             mult_label = "Регионы РФ (базовый, ×1.0)"
@@ -2909,7 +2909,7 @@ async def client_bot_webhook(company_id: str, request: Request):
             "• <b>📱 Рассчитать смету онлайн:</b> точный расчёт под ваш метраж за 1 минуту\n"
             "• <b>📋 Прайс и смета работ:</b> детальные ставки за м² по всем видам работ\n"
             "• <b>📐 Бесплатный замер (0 ₽):</b> инженер с лазерным дальномером + 3D-план в подарок\n"
-            "• <b>💬 Связаться с прорабом:</b> телефон и контакты компании"
+            "• <b>❓ Вопросы и гарантии:</b> гарантия 36 месяцев и условия договора"
         )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -2960,7 +2960,6 @@ async def client_bot_webhook(company_id: str, request: Request):
         zamer_kb = {
             "inline_keyboard": [
                 [{"text": "📅 Записаться на замер (в калькуляторе)", "web_app": {"url": app_url}}],
-                [{"text": "💬 Задать вопрос инженеру", "callback_data": "contact_manager"}],
             ]
         }
         try:
@@ -2978,12 +2977,10 @@ async def client_bot_webhook(company_id: str, request: Request):
             logger.error(f"Ошибка отправки инфо о замере: {e}")
 
     elif "прораб" in lower_text or "связ" in lower_text or "контакт" in lower_text:
-        # Кнопка «💬 Связаться с прорабом»
         contact_text = (
-            f"💬 <b>Служба клиентского сервиса и главный инженер:</b>\n\n"
+            f"💬 <b>Служба клиентского сервиса:</b>\n\n"
             f"🏢 <b>Компания:</b> {company_name}\n"
             f"📍 <b>Город:</b> {company_city}\n"
-            f"📞 <b>Телефон:</b> <code>{company_phone}</code>\n"
             f"⏰ <b>Время работы:</b> ежедневно с 09:00 до 21:00\n\n"
             "Работаем строго по договору с гарантией 36 месяцев и 0% предоплатой."
         )

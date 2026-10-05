@@ -330,7 +330,7 @@ def generate_estimate_pdf(lead: Dict[str, Any], company: Optional[Dict[str, Any]
                 Paragraph(f"<b>СМЕТНЫЙ РАСЧЕТ № {lead_id}</b><br/><font color='#71717a'>Дата: {now_date_str}</font>", ParagraphStyle("RightHdr", fontName=reg_font, fontSize=9, leading=12, alignment=2)),
             ],
             [
-                Paragraph(f"{company_subtitle} · г. {company_city} · {company_phone}", subtitle_style),
+                Paragraph(f"{company_subtitle} · г. {company_city}", subtitle_style),
                 Paragraph("<font color='#059669'><b>ПРЕДВАРИТЕЛЬНАЯ ОФИЦИАЛЬНАЯ СМЕТА</b></font>", ParagraphStyle("RightBadge", fontName=bold_font, fontSize=8, leading=10, alignment=2)),
             ],
         ]
