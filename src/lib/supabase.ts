@@ -34,23 +34,23 @@ export const supabase: SupabaseClient | null = isSupabaseConfigured
     })
   : null;
 
-// Real companies registry configured in Supabase
+// Fallback demo companies for instant multi-tenancy testing
 export const DEMO_COMPANIES: Record<
   string,
   { company: CompanyConfig; pricing: PricingRules }
 > = {
   'remont-pro': {
     company: {
-      id: '00000000-0000-0000-0000-000000000001',
+      id: 'remont-pro',
       name: 'РемонтПро',
       subtitle: 'Калькулятор ремонта квартир',
       city: 'Москва и МО',
-      phone: '+7 (495) 000-00-00',
+      phone: '+7 (800) 555-35-35',
       statusText: 'Работаем без предоплаты',
       secondaryCoeff: 1.15,
       logoLetter: 'Р',
       badgeText: 'PRO',
-      botUsername: 'cuberlife_bot',
+      botUsername: 'remont_pro_bot',
     },
     pricing: {
       cosmeticPrice: 4500,
@@ -61,70 +61,48 @@ export const DEMO_COMPANIES: Record<
       materialsPrice: 3500,
     },
   },
-  'omon': {
+  'elite-stroi': {
     company: {
-      id: '41a7cf6c-a208-41fc-8803-755a485162a0',
-      name: 'ОМОН',
-      subtitle: 'Капитальный и дизайнерский ремонт',
-      city: 'Рязань',
-      phone: '+7 (800) 555-35-35',
-      statusText: 'Оплата по акту приемки',
-      secondaryCoeff: 1.10,
-      logoLetter: 'О',
-      badgeText: 'PRO',
-      botUsername: 'omonremont_bot',
-    },
-    pricing: {
-      cosmeticPrice: 4200,
-      capitalPrice: 7900,
-      designerPrice: 13500,
-      designProjectPrice: 1800,
-      demolitionPrice: 950,
-      materialsPrice: 3100,
-    },
-  },
-  'brigadealexey': {
-    company: {
-      id: 'c3b3e660-f2ed-46f5-af75-99b3e446672a',
-      name: 'Бригада Алексея',
-      subtitle: 'Ремонт квартир под ключ',
-      city: 'Москва',
-      phone: '+7 (800) 555-35-35',
-      statusText: 'Договор и гарантия 3 года',
-      secondaryCoeff: 1.15,
-      logoLetter: 'А',
-      badgeText: 'PRO',
-      botUsername: 'brigadealexey_bot',
-    },
-    pricing: {
-      cosmeticPrice: 4500,
-      capitalPrice: 8500,
-      designerPrice: 15000,
-      designProjectPrice: 2000,
-      demolitionPrice: 1200,
-      materialsPrice: 3500,
-    },
-  },
-  'atlon': {
-    company: {
-      id: 'fefaf1f4-e1e2-442a-8b8e-9629e610ff44',
-      name: 'Студия ремонта Атлонфм',
-      subtitle: 'Отделка премиум-класса',
+      id: 'elite-stroi',
+      name: 'ЭлитСтрой Премиум',
+      subtitle: 'Дизайнерский ремонт и отделка',
       city: 'Санкт-Петербург',
-      phone: '+7 (800) 555-35-35',
-      statusText: 'Гарантия качества по ГОСТ',
-      secondaryCoeff: 1.12,
-      logoLetter: 'С',
-      badgeText: 'PRO',
-      botUsername: 'atlonbot_bot',
+      phone: '+7 (812) 345-67-89',
+      statusText: 'Гарантия 5 лет по ГОСТ',
+      secondaryCoeff: 1.20,
+      logoLetter: 'Э',
+      badgeText: 'ELITE',
+      botUsername: 'elite_stroi_bot',
     },
     pricing: {
-      cosmeticPrice: 4400,
-      capitalPrice: 8200,
-      designerPrice: 14500,
-      designProjectPrice: 1900,
-      demolitionPrice: 1100,
-      materialsPrice: 3300,
+      cosmeticPrice: 5200,
+      capitalPrice: 9800,
+      designerPrice: 18000,
+      designProjectPrice: 2500,
+      demolitionPrice: 1500,
+      materialsPrice: 4200,
+    },
+  },
+  'master-remonta': {
+    company: {
+      id: 'master-remonta',
+      name: 'МастерРемонт',
+      subtitle: 'Надежный ремонт под ключ',
+      city: 'Казань',
+      phone: '+7 (843) 210-99-88',
+      statusText: 'Без скрытых доплат',
+      secondaryCoeff: 1.10,
+      logoLetter: 'М',
+      badgeText: 'МАСТЕР',
+      botUsername: 'master_remonta_bot',
+    },
+    pricing: {
+      cosmeticPrice: 3900,
+      capitalPrice: 7400,
+      designerPrice: 13500,
+      designProjectPrice: 1700,
+      demolitionPrice: 1000,
+      materialsPrice: 3100,
     },
   },
 };

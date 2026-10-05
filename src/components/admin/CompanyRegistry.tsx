@@ -324,6 +324,7 @@ export function CompanyRegistry({
                   <td className="py-3 px-3">
                     <div className="font-semibold text-zinc-900 dark:text-zinc-100">{company.foremanName}</div>
                     <div className="text-[11px] text-zinc-500 flex items-center gap-2">
+                      <span>{company.foremanPhone}</span>
                       <a
                         href={`https://t.me/${company.foremanTg.replace('@', '')}`}
                         target="_blank"

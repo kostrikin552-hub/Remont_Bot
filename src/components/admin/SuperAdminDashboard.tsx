@@ -8,9 +8,6 @@ import { GlobalSettings } from './GlobalSettings';
 import { SystemMonitoring } from './SystemMonitoring';
 import { LeadEstimateModal } from './LeadEstimateModal';
 import { MiniAppSimulatorModal } from './MiniAppSimulatorModal';
-import { BotControlPanel } from './BotControlPanel';
-import { DatabaseControlPanel } from './DatabaseControlPanel';
-import { BusinessCrmDashboard } from './BusinessCrmDashboard';
 import {
   fetchRealCompanies,
   fetchRealLeads,
@@ -43,9 +40,6 @@ import {
   Users,
   Activity,
   SlidersHorizontal,
-  Bot,
-  Database,
-  TrendingUp,
 } from 'lucide-react';
 
 interface SuperAdminDashboardProps {
@@ -225,36 +219,6 @@ export function SuperAdminDashboard({
     showToast('Инцидент помечен как решённый.');
   };
 
-  const handleUpdateCompany = (updatedCompany: TenantCompany) => {
-    setCompanies((prev) => {
-      const updated = prev.map((c) => (c.id === updatedCompany.id ? updatedCompany : c));
-      saveCompaniesToStorage(updated);
-      setStats(computeRealStats(updated, leads, nodes));
-      return updated;
-    });
-  };
-
-  const handleUpdateLead = (updatedLead: LiveLead) => {
-    setLeads((prev) => {
-      const exists = prev.some((l) => l.id === updatedLead.id);
-      const updated = exists
-        ? prev.map((l) => (l.id === updatedLead.id ? updatedLead : l))
-        : [updatedLead, ...prev];
-      saveLeadsToStorage(updated);
-      setStats(computeRealStats(companies, updated, nodes));
-      return updated;
-    });
-  };
-
-  const handleUpdateLeadStatus = (leadId: string, newStatus: LiveLead['status']) => {
-    setLeads((prev) => {
-      const updated = prev.map((l) => (l.id === leadId ? { ...l, status: newStatus } : l));
-      saveLeadsToStorage(updated);
-      setStats(computeRealStats(companies, updated, nodes));
-      return updated;
-    });
-  };
-
   const handleRefreshChecks = async () => {
     try {
       const refreshedNodes = await pingRealInfrastructure();
@@ -393,33 +357,6 @@ export function SuperAdminDashboard({
             />
           )}
 
-          {activeTab === 'bot_control' && (
-            <BotControlPanel
-              companies={companies}
-              onShowToast={showToast}
-            />
-          )}
-
-          {activeTab === 'database' && (
-            <DatabaseControlPanel
-              companies={companies}
-              leads={leads}
-              onUpdateCompany={handleUpdateCompany}
-              onUpdateLead={handleUpdateLead}
-              onShowToast={showToast}
-            />
-          )}
-
-          {activeTab === 'business_crm' && (
-            <BusinessCrmDashboard
-              leads={leads}
-              companies={companies}
-              onOpenLeadModal={(lead) => setSelectedLead(lead)}
-              onUpdateLeadStatus={handleUpdateLeadStatus}
-              onShowToast={showToast}
-            />
-          )}
-
           {activeTab === 'companies' && (
             <CompanyRegistry
               companies={companies}
@@ -467,81 +404,69 @@ export function SuperAdminDashboard({
         </main>
 
         {/* Mobile Fixed Bottom Navigation Bar (Telegram Native Style) */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200/80 dark:border-zinc-800/80 px-2 py-1 flex items-center justify-around safe-bottom">
+        <nav className="md:hidden fixed bottom-0 left-0 right-0 z-30 bg-white/95 dark:bg-zinc-900/95 backdrop-blur-md border-t border-zinc-200/80 dark:border-zinc-800/80 px-2 py-1.5 flex items-center justify-around safe-bottom">
           <button
             onClick={() => setActiveTab('overview')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-1 rounded-lg text-[9px] font-bold transition ${
+            className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-bold transition ${
               activeTab === 'overview'
                 ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-600 dark:text-zinc-400'
+                : 'text-zinc-600 dark:text-zinc-300'
             }`}
           >
             <LayoutDashboard className="w-4 h-4" />
-            <span>Инфо</span>
+            <span>Дашборд</span>
           </button>
 
           <button
-            onClick={() => setActiveTab('bot_control')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-1 rounded-lg text-[9px] font-bold transition relative ${
-              activeTab === 'bot_control'
+            onClick={() => setActiveTab('companies')}
+            className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-bold transition relative ${
+              activeTab === 'companies'
                 ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-600 dark:text-zinc-400'
+                : 'text-zinc-600 dark:text-zinc-300'
             }`}
           >
-            <Bot className="w-4 h-4" />
-            <span>Бот</span>
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute top-1 right-1" />
-          </button>
-
-          <button
-            onClick={() => setActiveTab('database')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-1 rounded-lg text-[9px] font-bold transition relative ${
-              activeTab === 'database'
-                ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-600 dark:text-zinc-400'
-            }`}
-          >
-            <Database className="w-4 h-4" />
-            <span>БД</span>
-          </button>
-
-          <button
-            onClick={() => setActiveTab('business_crm')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-1 rounded-lg text-[9px] font-bold transition relative ${
-              activeTab === 'business_crm'
-                ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-600 dark:text-zinc-400'
-            }`}
-          >
-            <TrendingUp className="w-4 h-4" />
-            <span>CRM</span>
+            <Building2 className="w-4 h-4" />
+            <span>Компании</span>
           </button>
 
           <button
             onClick={() => setActiveTab('leads')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-1 rounded-lg text-[9px] font-bold transition relative ${
+            className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-bold transition relative ${
               activeTab === 'leads'
                 ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-600 dark:text-zinc-400'
+                : 'text-zinc-600 dark:text-zinc-300'
             }`}
           >
             <Users className="w-4 h-4" />
             <span>Лиды</span>
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 absolute top-1 right-2" />
           </button>
 
           <button
             onClick={() => setActiveTab('monitoring')}
-            className={`flex flex-col items-center gap-0.5 py-1 px-1 rounded-lg text-[9px] font-bold transition relative ${
+            className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-bold transition relative ${
               activeTab === 'monitoring'
                 ? 'text-zinc-950 dark:text-white'
-                : 'text-zinc-600 dark:text-zinc-400'
+                : 'text-zinc-600 dark:text-zinc-300'
             }`}
           >
             <Activity className="w-4 h-4" />
             <span>Статус</span>
             {stats.webhooksWarning > 0 && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 absolute top-1 right-1" />
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-500 absolute top-1 right-2" />
             )}
+          </button>
+
+          <button
+            onClick={() => setActiveTab('settings')}
+            className={`flex flex-col items-center gap-0.5 py-1 px-2 rounded-lg text-[10px] font-bold transition ${
+              activeTab === 'settings'
+                ? 'text-zinc-950 dark:text-white'
+                : 'text-zinc-600 dark:text-zinc-300'
+            }`}
+          >
+            <SlidersHorizontal className="w-4 h-4" />
+            <span>ГОСТ</span>
           </button>
         </nav>
       </div>

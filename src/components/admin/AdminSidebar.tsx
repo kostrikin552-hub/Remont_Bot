@@ -8,21 +8,9 @@ import {
   Zap,
   CheckCircle2,
   Activity,
-  Bot,
-  Database,
-  TrendingUp,
 } from 'lucide-react';
 
-export type AdminTab =
-  | 'overview'
-  | 'bot_control'
-  | 'database'
-  | 'business_crm'
-  | 'companies'
-  | 'leads'
-  | 'broadcast'
-  | 'monitoring'
-  | 'settings';
+export type AdminTab = 'overview' | 'companies' | 'leads' | 'broadcast' | 'settings' | 'monitoring';
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
@@ -45,9 +33,6 @@ export function AdminSidebar({
 }: AdminSidebarProps) {
   const menuItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; badge?: string }[] = [
     { id: 'overview', label: 'Главный дашборд', icon: LayoutDashboard },
-    { id: 'bot_control', label: 'Управление ботом', icon: Bot, badge: 'Online' },
-    { id: 'database', label: 'База данных & Таблицы', icon: Database },
-    { id: 'business_crm', label: 'Бизнес & CRM клиентов', icon: TrendingUp },
     {
       id: 'companies',
       label: 'Реестр компаний',
@@ -58,7 +43,7 @@ export function AdminSidebar({
     { id: 'broadcast', label: 'Рассылка Telegram', icon: Send },
     {
       id: 'monitoring',
-      label: 'Мониторинг & Серверы',
+      label: 'Мониторинг & Ошибки',
       icon: Activity,
       badge: pendingIssuesCount > 0 ? `${pendingIssuesCount}` : undefined,
     },

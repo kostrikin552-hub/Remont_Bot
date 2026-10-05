@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Moon, Sun, LayoutDashboard } from 'lucide-react';
+import { Moon, Sun } from 'lucide-react';
 import { CompanyConfig } from '../types';
 import { triggerHaptic } from '../utils/telegram';
 import { AvatarDownloadModal } from './AvatarDownloadModal';
@@ -67,11 +67,10 @@ export const Header: React.FC<HeaderProps> = ({
                 triggerHaptic('light');
                 onOpenAdmin();
               }}
-              title="Открыть панель управления ботом и БД"
-              className="px-2.5 py-1.5 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 text-xs font-bold flex items-center gap-1.5 transition shadow-xs hover:opacity-90 active:scale-95"
+              title="Открыть SuperAdmin Dashboard"
+              className="px-2 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1 transition"
             >
-              <LayoutDashboard className="w-3.5 h-3.5 text-emerald-400 dark:text-emerald-600" />
-              <span>Бот & БД</span>
+              <span>Admin</span>
             </button>
           )}
 

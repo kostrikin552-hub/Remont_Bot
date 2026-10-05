@@ -411,7 +411,6 @@ export default function App() {
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
-          onOpenAdmin={() => setViewMode('admin')}
         />
 
         {/* Main Unified Calculator */}
@@ -570,17 +569,6 @@ export default function App() {
                 className="hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
               >
                 Публичная оферта
-              </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('medium');
-                  setViewMode('admin');
-                }}
-                className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
-              >
-                Панель управления (Бот & БД)
               </button>
             </div>
             <p className="text-[10px] text-zinc-400 dark:text-zinc-500 pt-0.5">
