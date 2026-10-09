@@ -1,3 +1,5 @@
+import { KeyStatus, LeadScoringGrade, PropertySubtype } from '../types';
+
 export interface TenantCompany {
   id: string;
   name: string;
@@ -16,6 +18,7 @@ export interface TenantCompany {
   webhookStatus: 'healthy' | 'error' | 'warning';
   webhookError?: string;
   pricingMultiplier: number;
+  serviceRadius?: string; // Зона обслуживания (например "Вся Москва + 15 км от МКАД")
 }
 
 export interface LiveLead {
@@ -25,10 +28,19 @@ export interface LiveLead {
   companyName: string;
   customerName: string;
   phone: string;
+  telegramUsername?: string;
   isUnlocked: boolean;
   city: string;
   address: string;
   area: number;
+  propertySubtype?: PropertySubtype;
+  bathroomsCount?: number;
+  ceilingHeight?: number;
+  keyStatus?: KeyStatus;
+  leadScore?: number;
+  leadGrade?: LeadScoringGrade;
+  isVisitAllowed?: boolean;
+  scoringWarning?: string;
   renovationClass: 'Косметический' | 'Капитальный' | 'Дизайнерский';
   estimateTotal: number;
   savingsTotal: number;

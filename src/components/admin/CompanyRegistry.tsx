@@ -41,6 +41,7 @@ export function CompanyRegistry({
   const [newForeman, setNewForeman] = useState('');
   const [newPhone, setNewPhone] = useState('+7 ');
   const [newBot, setNewBot] = useState('');
+  const [newRadius, setNewRadius] = useState('Вся Москва + 15 км от МКАД');
 
   const cities = useMemo(() => {
     return Array.from(new Set(companies.map((c) => c.city)));
@@ -91,6 +92,7 @@ export function CompanyRegistry({
       isBlocked: false,
       webhookStatus: 'healthy',
       pricingMultiplier: 1.0,
+      serviceRadius: newRadius.trim() || `${newCity.trim()} и пригород до 15 км`,
     };
 
     if (onAddCompany) {
@@ -218,8 +220,9 @@ export function CompanyRegistry({
 
             <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
               <div>
-                <span className="text-zinc-500 block text-[10px]">Прораб:</span>
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200">{company.foremanName}</span>
+                <span className="text-zinc-500 block text-[10px]">Прораб / Телефон:</span>
+                <span className="font-semibold text-zinc-800 dark:text-zinc-200 block">{company.foremanName}</span>
+                <span className="text-zinc-500 font-mono text-[10px]">{company.foremanPhone}</span>
               </div>
               <div>
                 <span className="text-zinc-500 block text-[10px]">Лидов / Сметы:</span>
@@ -546,6 +549,19 @@ export function CompanyRegistry({
                     className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none font-mono"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
+                  Рабочий радиус / Гео-зона выезда:
+                </label>
+                <input
+                  type="text"
+                  placeholder="Например: Вся Москва + 15 км от МКАД"
+                  value={newRadius}
+                  onChange={(e) => setNewRadius(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none"
+                />
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2">

@@ -49,6 +49,95 @@ router = Router()
 
 
 CURRENT_BOT_USERNAME: str = os.getenv("BOT_USERNAME", "")
+COMPANY_PHONE: str = os.getenv("COMPANY_PHONE", os.getenv("FOREMAN_PHONE", "+7 (920) 953-45-00"))
+COMPANY_NAME: str = os.getenv("COMPANY_NAME", "РемонтПро")
+COMPANY_CITY: str = os.getenv("COMPANY_CITY", "Москва и МО")
+
+HOUSING_RISK_PROFILES = {
+    "white_box": {
+        "percent": 5,
+        "label": "White Box (предчистовая)",
+        "risks": [
+            "Пустоты под штукатуркой застройщика (бухтение)",
+            "Геометрия углов 90° в зоне кухни и санузлов",
+            "Работоспособность кабельных линий застройщика",
+        ],
+    },
+    "new_concrete": {
+        "percent": 8,
+        "label": "Новостройка (монолит / бетон)",
+        "risks": [
+            "Перепад монолитных плит (влияет на слой стяжки от 4 до 8 см)",
+            "Отклонение монолитных пилонов от вертикали",
+            "Высота канализационного тройника и давление воды",
+        ],
+    },
+    "open_plan": {
+        "percent": 10,
+        "label": "Свободная планировка",
+        "risks": [
+            "Точные границы мокрых зон по плану БТИ",
+            "Фактический расход блоков для перегородок",
+            "Необходимость звукоизоляции межквартирных стен",
+        ],
+    },
+    "secondary_panel": {
+        "percent": 12,
+        "label": "Вторичка (типовая панель)",
+        "risks": [
+            "Состояние проводки в скрытых каналах плит",
+            "Сцепление старой штукатурки (демонтаж до основания)",
+            "Износ общедомовых стояков и чугунного раструба",
+        ],
+    },
+    "old_fund": {
+        "percent": 18,
+        "label": "Старый фонд / сталинка",
+        "risks": [
+            "Состояние балок перекрытий (металл / дерево)",
+            "Толщина старой штукатурки по дранке (до 10–15 см)",
+            "Объём засыпки шлаком и строительного мусора под полом",
+        ],
+    },
+}
+
+def get_bot_reserve_data(housing_type: str, grand_total: float):
+    raw = (housing_type or "new_concrete").lower()
+    if "white" in raw:
+        key = "white_box"
+    elif "open" in raw or "свобод" in raw:
+        key = "open_plan"
+    elif "old" in raw or "сталин" in raw or "старый" in raw:
+        key = "old_fund"
+    elif "secondary" in raw or "вторич" in raw:
+        key = "secondary_panel"
+    else:
+        key = "new_concrete"
+
+    prof = HOUSING_RISK_PROFILES.get(key, HOUSING_RISK_PROFILES["new_concrete"])
+    percent = prof["percent"]
+    reserve_amount = int(round((grand_total * (percent / 100.0)) / 100.0) * 100)
+    return percent, reserve_amount, prof["label"], prof["risks"]
+
+
+def format_bot_estimate_text(grand_total: float, works_cost: float, materials_cost: float, housing_type: str = "new_concrete") -> str:
+    pct, reserve_amt, label, _ = get_bot_reserve_data(housing_type, grand_total)
+    gt_str = f"{grand_total:,.0f}".replace(",", " ")
+    w_str = f"{works_cost:,.0f}".replace(",", " ")
+    m_str = f"{materials_cost:,.0f}".replace(",", " ")
+    res_str = f"{reserve_amt:,.0f}".replace(",", " ")
+
+    return (
+        f"📊 <b>Предварительный расчёт:</b> {gt_str} ₽\n\n"
+        f"🔹 <b>Работы бригады (ГОСТ):</b> {w_str} ₽\n"
+        f"🔹 <b>Черновые материалы Knauf/Rehau:</b> {m_str} ₽\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"🛡 <b>Инженерный резерв (+{pct}%):</b> {res_str} ₽\n"
+        f"<i>(Рекомендуемый запас на скрытые перепады плит от застройщика. "
+        f"Если дефектов нет — деньги остаются у вас).</i>\n\n"
+        f"🔒 <b>Гарантия твёрдой цены:</b>\n"
+        f"После бесплатного замера смета фиксируется в договоре и не увеличивается в ходе работ."
+    )
 
 
 def get_webapp_url(company_id: Optional[str] = None, bot_username: Optional[str] = None) -> str:
@@ -87,7 +176,6 @@ def get_client_reply_keyboard(company_id: Optional[str] = None, bot_username: Op
                 KeyboardButton(text="📐 Бесплатный замер (0 ₽)"),
             ],
             [
-                KeyboardButton(text="💬 Связаться с прорабом"),
                 KeyboardButton(text="❓ Вопросы и гарантии"),
             ],
         ],
@@ -113,8 +201,8 @@ def get_webapp_inline_keyboard(company_id: Optional[str] = None, bot_username: O
                     callback_data="btn_price_categories",
                 ),
                 InlineKeyboardButton(
-                    text="💬 Задать вопрос",
-                    callback_data="contact_manager",
+                    text="❓ Вопросы и гарантии",
+                    callback_data="btn_faq",
                 ),
             ],
         ]
@@ -239,14 +327,17 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
 
     greeting = (
         f"Здравствуйте, {message.from_user.first_name}!\n\n"
-        "🏠 <b>Добро пожаловать в сервис прозрачного расчёта ремонта квартир под ключ.</b>\n\n"
+        f"🏠 <b>Добро пожаловать в сервис прозрачного расчёта ремонта «{COMPANY_NAME}».</b>\n\n"
+        f"📍 Город: <b>{COMPANY_CITY}</b>\n"
+        f"📞 <b>Контактный телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n"
+        "⚡️ Работаем без предоплаты — оплата поэтапно по факту приёмки качества.\n\n"
         "У нас <b>нет приблизительных цен «на глаз»</b> — каждая позиция рассчитывается по фиксированному "
         "прайс-листу и смете ГОСТ без скрытых переплат:\n\n"
         "⚡️ <b>Что доступно прямо по кнопкам ниже:</b>\n"
         "• <b>📱 Рассчитать смету онлайн:</b> выберите площадь и узнайте стоимость за 1 минуту\n"
         "• <b>📋 Прайс и смета работ:</b> прозрачные расценки за м² по всем видам работ\n"
         "• <b>📐 Бесплатный замер (0 ₽):</b> бронь выезда инженера с лазерным дальномером\n"
-        "• <b>💬 Связаться с прорабом:</b> прямая линия с главным инженером\n\n"
+        "• <b>❓ Вопросы и гарантии:</b> гарантия 36 месяцев и условия договора\n\n"
         "🎁 <b>Подарок к замеру:</b> 3D-планировка расстановки мебели и смета за 24 ч — бесплатно!\n\n"
         "<i>Нажимайте на кнопки внизу для моментального выбора:</i>"
     )
@@ -265,7 +356,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
 async def msg_price_list(message: Message):
     """Отправка прайс-листа и сметных категорий компании"""
     text = (
-        "📋 <b>Официальный прайс-лист и фиксированные расценки компании</b>\n\n"
+        f"📋 <b>Официальный прайс-лист и фиксированные расценки «{COMPANY_NAME}»</b>\n\n"
         "Все цены фиксируются в приложении к договору и остаются неизменными во время ремонта.\n\n"
         "Выберите раздел сметы, чтобы посмотреть конкретные расценки:"
     )
@@ -293,6 +384,7 @@ async def msg_booking_info(message: Message):
         "🎁 <b>Бесплатные бонусы:</b>\n"
         "1. Фиксированная смета на фирменном бланке (за 24 часа)\n"
         "2. 3D-план расстановки мебели и розеток\n\n"
+        f"📞 <b>Контактный телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n\n"
         "Нажмите кнопку ниже, чтобы забронировать удобное время:"
     )
     kb = InlineKeyboardMarkup(
@@ -303,28 +395,29 @@ async def msg_booking_info(message: Message):
                     web_app=WebAppInfo(url=get_webapp_url()),
                 )
             ],
-            [
-                InlineKeyboardButton(
-                    text="💬 Написать инженеру",
-                    callback_data="contact_manager",
-                )
-            ],
         ]
     )
     await message.answer(text=text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
 # ---------------------------------------------------------------------------
-# Кнопка «💬 Связаться с прорабом»
+# Контакты компании и службы сервиса
 # ---------------------------------------------------------------------------
-@router.message(F.text == "💬 Связаться с прорабом")
-async def msg_contact_pro(message: Message):
+@router.message(Command("contact"))
+@router.message(Command("phone"))
+@router.callback_query(F.data == "contact_manager")
+async def msg_contact_pro(message_or_call: Any):
     """Прямая связь с дежурным инженером и компанией"""
+    is_call = isinstance(message_or_call, CallbackQuery)
+    message = message_or_call.message if is_call else message_or_call
+    if is_call:
+        await message_or_call.answer()
+
     text = (
-        "💬 <b>Служба клиентского сервиса и главный инженер</b>\n\n"
-        "🏢 <b>Компания:</b> РемонтПро\n"
-        "📍 <b>Регион:</b> Москва и МО, Санкт-Петербург, Казань\n"
-        "📞 <b>Прямой телефон:</b> <code>+7 (800) 555-35-35</code>\n"
+        f"💬 <b>Служба клиентского сервиса «{COMPANY_NAME}»</b>\n\n"
+        f"🏢 <b>Компания:</b> {COMPANY_NAME}\n"
+        f"📍 <b>Регион:</b> {COMPANY_CITY}\n"
+        f"📞 <b>Контактный телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n"
         "⏰ <b>График работы:</b> Ежедневно с 09:00 до 21:00\n\n"
         "⚡️ Работаем <b>без предоплаты</b>, оплата по факту приёмки каждого этапа работ по акту."
     )
@@ -345,8 +438,14 @@ async def msg_contact_pro(message: Message):
 # Кнопка «❓ Вопросы и гарантии»
 # ---------------------------------------------------------------------------
 @router.message(F.text == "❓ Вопросы и гарантии")
-async def msg_faq_guarantees(message: Message):
+@router.callback_query(F.data == "btn_faq")
+async def msg_faq_guarantees(message_or_call: Any):
     """Частые вопросы и гарантии компании"""
+    is_call = isinstance(message_or_call, CallbackQuery)
+    message = message_or_call.message if is_call else message_or_call
+    if is_call:
+        await message_or_call.answer()
+
     text = (
         "❓ <b>Частые вопросы и стандарты надёжности:</b>\n\n"
         "🛡 <b>1. Действительно без предоплаты?</b>\n"
@@ -359,7 +458,8 @@ async def msg_faq_guarantees(message: Message):
         "Мы закупаем смеси Knauf, кабели ГОСТ и трубы Rehau напрямую с оптовых баз со скидкой до 20% "
         "и полной гарантией подлинности, либо вы можете закупать их сами.\n\n"
         "⏳ <b>4. Какая гарантия на ремонт?</b>\n"
-        "Гарантия 36 месяцев (3 года) по официальному договору."
+        "Гарантия 36 месяцев (3 года) по официальному договору.\n\n"
+        f"📞 <b>Контактный телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>"
     )
     kb = InlineKeyboardMarkup(
         inline_keyboard=[
@@ -371,6 +471,7 @@ async def msg_faq_guarantees(message: Message):
             ]
         ]
     )
+    await message.answer(text=text, reply_markup=kb, parse_mode=ParseMode.HTML)
     await message.answer(text=text, reply_markup=kb, parse_mode=ParseMode.HTML)
 
 
@@ -605,6 +706,7 @@ async def handle_webapp_data(message: Message, bot: Bot):
             f"💰 <b>Диапазон сметы:</b> {price_min:,.0f} — {price_max:,.0f} ₽\n"
             f"📅 <b>Желаемая дата выезда:</b> {date_visit}\n"
             f"💬 <b>Канал связи:</b> {comm_channel}\n\n"
+            f"📞 <b>Телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n\n"
             "🎁 <b>За вами зафиксированы бонусы:</b>\n"
             "• Лазерный замер объекта — 0 ₽\n"
             "• Построчная смета на бланке за 24 ч — 0 ₽\n"
@@ -621,19 +723,39 @@ async def handle_webapp_data(message: Message, bot: Bot):
         # 2. Уведомление администратора / CRM
         if ADMIN_CHAT_ID:
             try:
+                client_tg_username = data.get("telegram_username") or message.from_user.username or ""
+                clean_tg_uname = client_tg_username.replace("@", "").strip()
+
+                # Буфер скрытых работ и лазерные точки контроля
+                calc_total = float(price_max or price_min or 0)
+                res_pct, res_sum, res_label, res_risks = get_bot_reserve_data(data.get("propertySubtype") or data.get("propertyType") or "new", calc_total)
+                risks_list = "\n".join([f" • {r}" for r in res_risks])
+
                 admin_alert = (
-                    f"🔥 <b>НОВЫЙ ЛИД ИЗ КАЛЬКУЛЯТОРА!</b>\n"
-                    f"ID: <code>{lead_id}</code>\n"
-                    f"От: {message.from_user.full_name} (@{message.from_user.username or 'нет'})\n"
-                    f"Телефон: <code>{phone}</code>\n"
-                    f"Город: {city}\n"
-                    f"Параметры: {area} м², {prop_type}, {tariff}\n"
-                    f"Смета: {price_min:,.0f} – {price_max:,.0f} ₽\n"
-                    f"Дата замера: {date_visit}\n"
-                )
+                    f"⚡ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР [#{lead_id}]</b>\n\n"
+                    f"👤 <b>Клиент:</b> {name} (@{clean_tg_uname or 'не указан'})\n"
+                    f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
+                    f"🏢 <b>Объект:</b> {prop_type}, {area} м², {tariff}\n"
+                    f"💰 <b>Расчётная смета:</b> {price_min:,.0f} – {price_max:,.0f} ₽\n\n"
+                    f"🛡 <b>Буфер скрытых работ:</b> +{res_pct}% ({res_sum:,.0f} ₽)\n"
+                    f"🔍 <b>Точки лазерного контроля на замере:</b>\n"
+                    f"{risks_list}\n\n"
+                    f"📅 <b>Дата замера:</b> {date_visit}\n"
+                    f"💬 <b>Канал связи:</b> {comm_channel}\n"
+                ).replace(",", " ")
+                ik_admin = []
+                if clean_tg_uname:
+                    ik_admin.append([
+                        InlineKeyboardButton(
+                            text="💬 Написать клиенту в Telegram",
+                            url=f"https://t.me/{clean_tg_uname}",
+                        )
+                    ])
+
                 await bot.send_message(
                     chat_id=int(ADMIN_CHAT_ID),
                     text=admin_alert,
+                    reply_markup=InlineKeyboardMarkup(inline_keyboard=ik_admin) if ik_admin else None,
                     parse_mode=ParseMode.HTML,
                 )
             except Exception as e:

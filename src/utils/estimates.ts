@@ -4,9 +4,168 @@ import {
   CalculatedEstimateItem,
   PricingRules,
   PropertyType,
+  PropertySubtype,
+  BathroomsCount,
+  CeilingHeight,
+  KeyStatus,
+  LeadScoring,
+  LeadScoringGrade,
   RenovationClassId,
   AdditionalOption,
 } from '../types';
+
+/**
+ * 1. Нелинейный расчет площади стен и периметра
+ * Formula: WallArea = FloorArea * PerimeterRatio(FloorArea) * (CeilingHeight / 2.7)
+ * - Studio <= 35 m² -> ratio 3.4
+ * - 1-2 room 35..65 m² -> ratio 2.8
+ * - 3+ room > 65 m² -> ratio 2.4
+ */
+export function calculateAccurateSurfaces(area: number, ceilingHeight: number = 2.7) {
+  let perimeterRatio = 2.4;
+  if (area <= 35) {
+    perimeterRatio = 3.4; // Для компактных студий
+  } else if (area <= 65) {
+    perimeterRatio = 2.8; // Для 1-2 комнатных квартир
+  }
+
+  const heightFactor = ceilingHeight / 2.7;
+  const wallArea = Math.round(area * perimeterRatio * heightFactor * 10) / 10;
+
+  return { wallArea, perimeterRatio, heightFactor };
+}
+
+/**
+ * 2. Расчет надбавки за дополнительные мокрые зоны (санузлы)
+ * - 1 = совмещенный санузел (базовый)
+ * - 1.5 = раздельный санузел (ванная комната + отдельный туалет)
+ * - 2 = 2 полноценных санузла (мастер-спальня + гостевой)
+ * - 3 = 3+ санузла (премиум-квартира)
+ */
+export function calculateWetAreasAddon(bathroomsCount: BathroomsCount = 1, regionalMultiplier: number = 1.0) {
+  let extraBaths = 0;
+  if (bathroomsCount === 1.5) {
+    extraBaths = 0.45; // Раздельный санузел (доп. гребенка, отдельная гидроизоляция, облицовка туалета)
+  } else if (bathroomsCount >= 2) {
+    extraBaths = bathroomsCount - 1;
+  }
+
+  if (extraBaths <= 0) {
+    return { worksAddon: 0, materialsAddon: 0, extraBaths: 0 };
+  }
+
+  // Дополнительный санузел: коллектор, штробление, гидроизоляция, укладка керамогранита, сантехприборы
+  const BASE_EXTRA_BATH_WORK = 140000;
+  const BASE_EXTRA_BATH_MAT = 85000;
+
+  return {
+    worksAddon: Math.round(extraBaths * BASE_EXTRA_BATH_WORK * regionalMultiplier),
+    materialsAddon: Math.round(extraBaths * BASE_EXTRA_BATH_MAT * regionalMultiplier),
+    extraBaths,
+  };
+}
+
+/**
+ * 3. Расчет ориентировочной вилки бюджета на ЧИСТОВЫЕ МАТЕРИАЛЫ
+ * (плитка, сантехника, напольные покрытия, двери, обои/краска, чистовой свет)
+ */
+export function calculateFinishingMaterialsRange(area: number, renovationClassId: RenovationClassId) {
+  let minPerMeter = 12000;
+  let maxPerMeter = 18000;
+  if (renovationClassId === 'capital') {
+    minPerMeter = 18000;
+    maxPerMeter = 30000;
+  } else if (renovationClassId === 'designer') {
+    minPerMeter = 32000;
+    maxPerMeter = 60000;
+  }
+
+  return {
+    min: Math.round(area * minPerMeter),
+    max: Math.round(area * maxPerMeter),
+    minPerMeter,
+    maxPerMeter,
+  };
+}
+
+/**
+ * 4. Движок автоматического скоринга лида (Lead Scoring Engine)
+ * Проверяет статус готовности ключей, класс ремонта, площадь и дату выезда.
+ */
+export function calculateLeadScore(input: {
+  keyStatus: KeyStatus;
+  renovationClass: RenovationClassId;
+  propertySubtype?: PropertySubtype;
+  area: number;
+  preferredDate?: string;
+  hasAddress?: boolean;
+}): LeadScoring {
+  let score = 50;
+
+  // 1. Статус ключей (критически важный фактор целевого лида)
+  if (input.keyStatus === 'ready') {
+    score += 35; // Ключи на руках, объект доступен
+  } else if (input.keyStatus === 'in_30_days') {
+    score += 15; // Ключи скоро (до 30 дней)
+  } else {
+    score -= 25; // Дом строится (2+ мес) -> выезд физически невозможен
+  }
+
+  // 2. Класс ремонта
+  if (input.renovationClass === 'designer') score += 15;
+  else if (input.renovationClass === 'capital') score += 10;
+  else score += 0;
+
+  // 3. Площадь объекта
+  if (input.area >= 80) score += 10;
+  else if (input.area >= 45) score += 5;
+
+  // 4. Срочность даты
+  if (input.preferredDate === 'Сегодня' || input.preferredDate === 'Завтра') {
+    if (input.keyStatus === 'ready') score += 5;
+  }
+
+  score = Math.max(10, Math.min(100, score));
+
+  let grade: LeadScoringGrade = 'warm';
+  let badge = '🟡 ТЁПЛЫЙ (КОНСУЛЬТАЦИЯ)';
+  let recommendedAction = 'Связаться для согласования проекта и консультации';
+  const canScheduleVisit = input.keyStatus === 'ready';
+  const warnings: string[] = [];
+
+  if (input.keyStatus !== 'ready') {
+    warnings.push(
+      input.keyStatus === 'construction'
+        ? '⚠️ Выезд на объект невозможен: дом строится. Провести онлайн-консультацию!'
+        : '⚠️ Выезд согласуется: ключи ожидаются в течение 30 дней. Уточнить дату выдачи ключей.'
+    );
+  }
+
+  if (score >= 80 && input.keyStatus === 'ready') {
+    grade = 'vip';
+    badge = '🔥 СРОЧНЫЙ (VIP)';
+    recommendedAction = 'Срочный выезд инженера сегодня/завтра! Высокая конверсия в договор.';
+  } else if (input.keyStatus === 'construction' || score < 50) {
+    grade = 'cold';
+    badge = '❄️ ХОЛОДНЫЙ (ПРИЦЕНКА)';
+    recommendedAction = 'НЕ отправлять замерщика! Провести онлайн-консультацию по планировке и зафиксировать скидку.';
+  } else {
+    grade = 'warm';
+    badge = '🟡 ТЁПЛЫЙ (КОНСУЛЬТАЦИЯ)';
+    recommendedAction = input.keyStatus === 'ready'
+      ? 'Согласовать выезд на замер и прислать предварительный проект.'
+      : 'Подготовить эскиз расстановки мебели и созвониться онлайн.';
+  }
+
+  return {
+    score,
+    grade,
+    badge,
+    recommendedAction,
+    canScheduleVisit,
+    warnings,
+  };
+}
 
 export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
   // 1. ДЕМОНТАЖ И ПОДГОТОВКА (Demolition)
@@ -15,7 +174,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'demolition',
     title: 'Демонтаж старых обоев, краски и шпаклевки',
     unit: 'м²',
-    quantityRatio: 2.6, // площадь стен ~2.6 от площади пола
+    quantityRatio: 2.6, // пересчитывается динамически от wallArea
     unitPrice: 140,
     tariffApplicability: ['cosmetic', 'capital', 'designer'],
     description: 'Очистка оснований до штукатурного слоя с увлажнением',
@@ -41,11 +200,21 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     description: 'Ударный демонтаж с сохранением целостности перекрытия',
   },
   {
+    id: 'demo-old-fund',
+    category: 'demolition',
+    title: 'Тяжелый демонтаж старого фонда: штукатурка по дранке, лаги пола',
+    unit: 'м²',
+    quantityRatio: 1.0,
+    unitPrice: 950,
+    tariffApplicability: ['capital', 'designer'],
+    description: 'Очистка кирпичных стен до кладки, расшивка деревянных перекрытий',
+  },
+  {
     id: 'demo-trash',
     category: 'demolition',
     title: 'Сбор в мешки, спуск и вывоз строительного мусора (контейнер)',
     unit: 'рейс',
-    quantityRatio: 0.035, // 1 контейнер на каждые ~30 м²
+    quantityRatio: 0.035,
     unitPrice: 8500,
     tariffApplicability: ['cosmetic', 'capital', 'designer'],
     description: 'Утилизация на лицензированном полигоне ТБО',
@@ -57,7 +226,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'rough',
     title: 'Обеспыливание и грунтовка глубокого проникновения (2 слоя)',
     unit: 'м²',
-    quantityRatio: 2.6,
+    quantityRatio: 2.6, // пересчитывается от wallArea
     unitPrice: 85,
     tariffApplicability: ['cosmetic', 'capital', 'designer'],
     description: 'Knauf Тифенгрунд с контролем адгезии',
@@ -67,10 +236,20 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'rough',
     title: 'Штукатурка стен по маякам с выведением углов 90°',
     unit: 'м²',
-    quantityRatio: 2.6,
+    quantityRatio: 2.6, // пересчитывается от wallArea
     unitPrice: 680,
     tariffApplicability: ['capital', 'designer'],
     description: 'Лазерный контроль вертикалей, срезка маяков, замывка под шпаклёвку',
+  },
+  {
+    id: 'rough-partitions',
+    category: 'rough',
+    title: 'Возведение межкомнатных перегородок из пазогребня / блоков с армированием',
+    unit: 'м²',
+    quantityRatio: 0.45,
+    unitPrice: 850,
+    tariffApplicability: ['capital', 'designer'],
+    description: 'Для свободной планировки: монтаж демпферной ленты и перевязка рядов',
   },
   {
     id: 'rough-screed',
@@ -87,7 +266,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'rough',
     title: 'Обмазочная эластичная гидроизоляция санузла с лентой',
     unit: 'м²',
-    quantityRatio: 0.35, // площадь санузлов
+    quantityRatio: 0.35, // масштабируется от количества санузлов
     unitPrice: 480,
     tariffApplicability: ['cosmetic', 'capital', 'designer'],
     description: 'Обработка углов гидроизоляционной лентой с заходом на стены 20 см',
@@ -99,7 +278,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'engineering',
     title: 'Штробление и прокладка ГОСТ-кабеля ВВГнг-LS в негорючей гофре',
     unit: 'пог. м',
-    quantityRatio: 1.8, // метров кабеля на метр квартиры
+    quantityRatio: 1.8,
     unitPrice: 210,
     tariffApplicability: ['capital', 'designer'],
     description: 'Фиксация к потолку клипсами, без скруток, сварка гильзами',
@@ -109,7 +288,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'engineering',
     title: 'Высверливание подрозетников и монтаж стаканов (точки)',
     unit: 'точек',
-    quantityRatio: 0.85, // ~45 точек на 50 м²
+    quantityRatio: 0.85,
     unitPrice: 490,
     tariffApplicability: ['capital', 'designer'],
     description: 'Алмазное безударное коронкование в бетоне и кирпиче',
@@ -119,7 +298,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'engineering',
     title: 'Сборка и коммутация силового электрощита с УЗО и реле напряжения',
     unit: 'щит',
-    quantityRatio: 0.02, // 1 щит на объект
+    quantityRatio: 0.02,
     unitPrice: 9500,
     tariffApplicability: ['capital', 'designer'],
     description: 'Автоматика ABB/Schneider/DEKraft, маркировка линий, гребенки',
@@ -129,7 +308,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'engineering',
     title: 'Разводка труб водоснабжения и канализации из сшитого полиэтилена',
     unit: 'точек',
-    quantityRatio: 0.16, // ~8-10 точек (ванна, душ, умывальник, инсталляция, стиралка, раковина кухня)
+    quantityRatio: 0.16,
     unitPrice: 2400,
     tariffApplicability: ['capital', 'designer'],
     description: 'Трубы Rehau Rautitan / Stout с опрессовкой давлением 10 атм',
@@ -151,7 +330,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'finishing',
     title: 'Шпаклевание стен финишной полимерной смесью (2 слоя)',
     unit: 'м²',
-    quantityRatio: 2.6,
+    quantityRatio: 2.6, // пересчитывается от wallArea
     unitPrice: 420,
     tariffApplicability: ['cosmetic', 'capital', 'designer'],
     description: 'Danogips DANO TOP под лампу Lossew без полос и рисок',
@@ -161,7 +340,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'finishing',
     title: 'Оклейка стен бесшовными флизелиновыми обоями / покраска',
     unit: 'м²',
-    quantityRatio: 2.3,
+    quantityRatio: 2.3, // пересчитывается от wallArea
     unitPrice: 380,
     tariffApplicability: ['cosmetic', 'capital', 'designer'],
     description: 'Стыковка рисунка встык, невидимый шов, прокат резиновым валиком',
@@ -201,7 +380,7 @@ export const DEFAULT_ESTIMATE_CATALOG: EstimateItem[] = [
     category: 'finishing',
     title: 'Установка межкомнатных дверей с доборами и магнитной фурнитурой',
     unit: 'комплект',
-    quantityRatio: 0.065, // ~3-4 двери на квартиру
+    quantityRatio: 0.065,
     unitPrice: 4200,
     tariffApplicability: ['capital', 'designer'],
     description: 'Врезка петель и ручек по шаблону, запенивание пистолетной пеной',
@@ -372,23 +551,56 @@ export function calculateDetailedEstimate(
   secondaryCoeff: number,
   renovationClassId: RenovationClassId,
   activeOptions: AdditionalOption[],
-  excludedItemIds: string[] = []
+  excludedItemIds: string[] = [],
+  propertySubtype: PropertySubtype = 'new_concrete',
+  bathroomsCount: BathroomsCount = 1,
+  ceilingHeight: CeilingHeight = 2.7
 ): {
   groups: EstimateCategoryGroup[];
   grandTotal: number;
   worksTotal: number;
   materialsTotal: number;
+  wetAreasCost: { works: number; materials: number };
+  finishingMaterialsEstimate: {
+    min: number;
+    max: number;
+    minPerMeter: number;
+    maxPerMeter: number;
+  };
+  wallArea: number;
+  perimeterRatio: number;
   totalPositions: number;
   activePositions: number;
   excludedCount: number;
   savingsTotal: number;
 } {
-  const propertyCoeff = propertyType === 'secondary' ? secondaryCoeff : 1.0;
+  // Accurate dynamic wall surfaces based on area and ceiling height
+  const { wallArea, perimeterRatio } = calculateAccurateSurfaces(area, ceilingHeight);
+
+  // Subtype-dependent secondary coefficient:
+  // Old fund / Stalinka requires heavy coeff 1.45 due to lath plaster, joists, tons of debris.
+  let effectiveSecondaryCoeff = 1.0;
+  if (propertySubtype === 'old_fund') {
+    effectiveSecondaryCoeff = 1.45;
+  } else if (propertyType === 'secondary' || propertySubtype === 'secondary_standard') {
+    effectiveSecondaryCoeff = secondaryCoeff || 1.15;
+  }
+
+  const isSecondary =
+    propertyType === 'secondary' ||
+    propertySubtype === 'secondary_standard' ||
+    propertySubtype === 'old_fund';
+
   const isDemolitionActive =
-    activeOptions.some((o) => o.id === 'demolition' && o.enabled) ||
-    propertyType === 'secondary';
+    activeOptions.some((o) => o.id === 'demolition' && o.enabled) || isSecondary;
   const isMaterialsActive = activeOptions.some((o) => o.id === 'materials' && o.enabled);
   const isDesignActive = activeOptions.some((o) => o.id === 'designProject' && o.enabled);
+
+  // Wet areas calculation addon
+  const wetAddon = calculateWetAreasAddon(bathroomsCount, 1.0);
+
+  // Finishing materials range estimate
+  const finishingMaterialsEstimate = calculateFinishingMaterialsRange(area, renovationClassId);
 
   // Group items by category
   const categories: EstimateItem['category'][] = [
@@ -421,6 +633,7 @@ export function calculateDetailedEstimate(
 
     const catItems = items.filter((item) => {
       if (item.category !== cat) return false;
+
       // Filter design project if option is disabled
       if (item.id === 'design-project' && !isDesignActive) {
         return false;
@@ -429,6 +642,22 @@ export function calculateDetailedEstimate(
       if (item.tariffApplicability && !item.tariffApplicability.includes(renovationClassId)) {
         return false;
       }
+
+      // Old fund demolition item only applies to old fund
+      if (item.id === 'demo-old-fund' && propertySubtype !== 'old_fund') {
+        return false;
+      }
+
+      // Partitions only relevant for open plan or capital/designer
+      if (item.id === 'rough-partitions' && propertySubtype !== 'new_open_plan') {
+        return false;
+      }
+
+      // White box already has plaster and basic screed
+      if (propertySubtype === 'new_whitebox' && item.id === 'rough-plaster') {
+        return false;
+      }
+
       return true;
     });
 
@@ -436,14 +665,59 @@ export function calculateDetailedEstimate(
 
     const calculatedItems: CalculatedEstimateItem[] = catItems.map((item) => {
       let qty = Math.round(area * item.quantityRatio * 10) / 10;
-      if (item.unit === 'щит' || item.unit === 'узел' || item.unit === 'рейс' || item.unit === 'комплект') {
-        qty = Math.max(1, Math.round(area * item.quantityRatio));
+
+      // 1. Dynamic wall area substitution:
+      if (
+        item.id === 'demo-wallpaper' ||
+        item.id === 'rough-primer' ||
+        item.id === 'rough-plaster' ||
+        item.id === 'finish-putty'
+      ) {
+        qty = wallArea;
+      } else if (item.id === 'finish-wallpaper') {
+        qty = Math.round(wallArea * 0.9 * 10) / 10; // Minus door and window openings
+      }
+
+      // 2. White Box adjustments:
+      if (propertySubtype === 'new_whitebox') {
+        if (item.id === 'rough-screed') {
+          qty = Math.round(area * 0.15 * 10) / 10; // Only corrective floor leveling
+        } else if (item.id === 'eng-cables') {
+          qty = Math.round(area * 0.6 * 10) / 10; // Complementing existing developer wiring
+        }
+      }
+
+      // 3. Wet areas scaling (additional bathrooms):
+      if (wetAddon.extraBaths > 0) {
+        if (item.id === 'rough-waterproofing') {
+          qty = Math.round(0.35 * area * (1 + wetAddon.extraBaths * 0.8) * 10) / 10;
+        } else if (item.id === 'finish-tiles') {
+          qty = Math.round(0.45 * area * (1 + wetAddon.extraBaths * 0.7) * 10) / 10;
+        } else if (item.id === 'eng-plumbing-pipes') {
+          qty = Math.round(area * item.quantityRatio + wetAddon.extraBaths * 4);
+        } else if (item.id === 'eng-collector') {
+          qty = Math.max(1, Math.round(1 + wetAddon.extraBaths));
+        }
+      }
+
+      // 4. Old fund debris multiplier:
+      if (propertySubtype === 'old_fund' && item.id === 'demo-trash') {
+        qty = Math.max(2, Math.round(area * 0.06));
+      }
+
+      if (
+        item.unit === 'щит' ||
+        item.unit === 'узел' ||
+        item.unit === 'рейс' ||
+        item.unit === 'комплект'
+      ) {
+        qty = Math.max(1, Math.round(qty));
       }
 
       // Secondary property coefficient applies to rough and demolition
       const itemCoeff =
-        (item.category === 'demolition' || item.category === 'rough') && propertyType === 'secondary'
-          ? propertyCoeff
+        (item.category === 'demolition' || item.category === 'rough') && isSecondary
+          ? effectiveSecondaryCoeff
           : 1.0;
 
       const subtotal = Math.round(qty * item.unitPrice * itemCoeff);
@@ -492,6 +766,13 @@ export function calculateDetailedEstimate(
     grandTotal,
     worksTotal,
     materialsTotal,
+    wetAreasCost: {
+      works: wetAddon.worksAddon,
+      materials: wetAddon.materialsAddon,
+    },
+    finishingMaterialsEstimate,
+    wallArea,
+    perimeterRatio,
     totalPositions,
     activePositions,
     excludedCount,

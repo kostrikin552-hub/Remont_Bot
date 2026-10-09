@@ -6,6 +6,7 @@ import {
   Eye,
   Building2,
   Clock,
+  Send,
 } from 'lucide-react';
 import { LiveLead } from '../../types/admin';
 
@@ -144,8 +145,20 @@ export function LiveLeadsFeed({
 
             <div className="flex items-start justify-between gap-2">
               <div>
-                <div className="font-bold text-xs text-zinc-950 dark:text-white">
-                  {lead.customerName}
+                <div className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5 flex-wrap">
+                  <span>{lead.customerName}</span>
+                  {lead.telegramUsername && (
+                    <a
+                      href={`https://t.me/${lead.telegramUsername.replace('@', '')}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-[10px] font-mono text-blue-600 dark:text-blue-400 font-semibold hover:underline inline-flex items-center gap-0.5"
+                      title={`Написать ${lead.telegramUsername} в Telegram`}
+                    >
+                      <Send className="w-2.5 h-2.5" />
+                      <span>{lead.telegramUsername}</span>
+                    </a>
+                  )}
                 </div>
                 <div className="text-[11px] text-zinc-500 font-medium">
                   {lead.city}, {lead.address}
@@ -174,13 +187,27 @@ export function LiveLeadsFeed({
                 <span>{lead.phone}</span>
               </button>
 
-              <button
-                onClick={() => onOpenLeadModal(lead)}
-                className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-[11px] rounded-md transition shadow-xs flex items-center gap-1"
-              >
-                <Eye className="w-3 h-3" />
-                <span>Смета</span>
-              </button>
+              <div className="flex items-center gap-1.5">
+                {lead.telegramUsername && (
+                  <a
+                    href={`https://t.me/${lead.telegramUsername.replace('@', '')}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 font-bold text-[11px] rounded-md transition inline-flex items-center gap-1"
+                    title={`Написать ${lead.telegramUsername} в Telegram`}
+                  >
+                    <Send className="w-3 h-3" />
+                    <span>Написать в TG</span>
+                  </a>
+                )}
+                <button
+                  onClick={() => onOpenLeadModal(lead)}
+                  className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-[11px] rounded-md transition shadow-xs flex items-center gap-1"
+                >
+                  <Eye className="w-3 h-3" />
+                  <span>Смета</span>
+                </button>
+              </div>
             </div>
           </div>
         ))}
@@ -195,6 +222,7 @@ export function LiveLeadsFeed({
                 <th className="py-2.5 px-3 font-bold">Дата / Время</th>
                 <th className="py-2.5 px-3 font-bold">Прикрепленная СК</th>
                 <th className="py-2.5 px-3 font-bold">Заказчик</th>
+                <th className="py-2.5 px-3 font-bold">Скоринг & Ключи</th>
                 <th className="py-2.5 px-3 font-bold">Телефон</th>
                 <th className="py-2.5 px-3 font-bold">Город & ЖК</th>
                 <th className="py-2.5 px-3 font-bold">Площадь & Тариф</th>
@@ -223,8 +251,52 @@ export function LiveLeadsFeed({
 
                   {/* Заказчик */}
                   <td className="py-3 px-3 text-zinc-900 dark:text-zinc-100">
-                    <div className="font-semibold">{lead.customerName}</div>
-                    <div className="text-[11px] text-zinc-500">{lead.rooms}</div>
+                    <div className="font-semibold text-zinc-950 dark:text-white">{lead.customerName}</div>
+                    {lead.telegramUsername && (
+                      <a
+                        href={`https://t.me/${lead.telegramUsername.replace('@', '')}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-[11px] font-mono text-blue-600 hover:text-blue-700 dark:text-blue-400 font-bold hover:underline mt-0.5"
+                        title={`Написать ${lead.telegramUsername} в Telegram`}
+                      >
+                        <Send className="w-2.5 h-2.5" />
+                        <span>{lead.telegramUsername}</span>
+                      </a>
+                    )}
+                    <div className="text-[10px] text-zinc-400">{lead.rooms}</div>
+                  </td>
+
+                  {/* Скоринг & Ключи (Smart Dispatcher) */}
+                  <td className="py-3 px-3">
+                    <div className="flex flex-col gap-1 items-start">
+                      <span className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
+                        (lead.leadGrade === 'vip' || (lead.leadScore && lead.leadScore >= 80))
+                          ? 'bg-orange-100 dark:bg-orange-950/60 text-orange-800 dark:text-orange-300 border border-orange-200 dark:border-orange-800'
+                          : (lead.leadGrade === 'cold' || lead.keyStatus === 'construction')
+                          ? 'bg-sky-100 dark:bg-sky-950/60 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
+                          : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                      }`}>
+                        {(lead.leadGrade === 'vip' || (lead.leadScore && lead.leadScore >= 80))
+                          ? `🔥 СРОЧНЫЙ (${lead.leadScore || 92}/100)`
+                          : (lead.leadGrade === 'cold' || lead.keyStatus === 'construction')
+                          ? `❄️ ПРИЦЕНКА (${lead.leadScore || 35}/100)`
+                          : `🟡 ТЁПЛЫЙ (${lead.leadScore || 68}/100)`}
+                      </span>
+                      {lead.keyStatus === 'construction' || lead.isVisitAllowed === false ? (
+                        <span className="text-[10px] text-rose-600 dark:text-rose-400 font-semibold leading-tight flex items-center gap-1">
+                          ⛔️ Выезд невозможен (дом строится)
+                        </span>
+                      ) : lead.keyStatus === 'in_30_days' ? (
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium leading-tight">
+                          🔑 Ключи через 30 дней
+                        </span>
+                      ) : (
+                        <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium leading-tight">
+                          🟢 Ключи на руках (выезд разрешен)
+                        </span>
+                      )}
+                    </div>
                   </td>
 
                   {/* Телефон (Locked / Unlocked) */}
@@ -275,15 +347,29 @@ export function LiveLeadsFeed({
                     )}
                   </td>
 
-                  {/* Кнопка сметы */}
+                  {/* Действия: Telegram & Смета */}
                   <td className="py-3 px-3 text-right">
-                    <button
-                      onClick={() => onOpenLeadModal(lead)}
-                      className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-xs rounded-md transition shadow-xs flex items-center gap-1.5 ml-auto"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Смета</span>
-                    </button>
+                    <div className="flex items-center justify-end gap-1.5">
+                      {lead.telegramUsername && (
+                        <a
+                          href={`https://t.me/${lead.telegramUsername.replace('@', '')}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="px-2 py-1 bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/60 dark:hover:bg-blue-900/60 text-blue-600 dark:text-blue-400 font-bold text-xs rounded-md transition shadow-xs inline-flex items-center gap-1"
+                          title={`Написать ${lead.telegramUsername} в Telegram`}
+                        >
+                          <Send className="w-3 h-3" />
+                          <span className="hidden xl:inline">В Telegram</span>
+                        </a>
+                      )}
+                      <button
+                        onClick={() => onOpenLeadModal(lead)}
+                        className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-xs rounded-md transition shadow-xs flex items-center gap-1.5"
+                      >
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Смета</span>
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}

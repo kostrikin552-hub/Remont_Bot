@@ -8,9 +8,21 @@ import {
   Zap,
   CheckCircle2,
   Activity,
+  Bot,
+  Database,
+  TrendingUp,
 } from 'lucide-react';
 
-export type AdminTab = 'overview' | 'companies' | 'leads' | 'broadcast' | 'settings' | 'monitoring';
+export type AdminTab =
+  | 'overview'
+  | 'bot_control'
+  | 'database'
+  | 'business_crm'
+  | 'companies'
+  | 'leads'
+  | 'broadcast'
+  | 'monitoring'
+  | 'settings';
 
 interface AdminSidebarProps {
   activeTab: AdminTab;
@@ -33,6 +45,9 @@ export function AdminSidebar({
 }: AdminSidebarProps) {
   const menuItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; badge?: string }[] = [
     { id: 'overview', label: 'Главный дашборд', icon: LayoutDashboard },
+    { id: 'bot_control', label: 'Управление ботом', icon: Bot, badge: 'Online' },
+    { id: 'database', label: 'База данных & Таблицы', icon: Database },
+    { id: 'business_crm', label: 'Бизнес & CRM клиентов', icon: TrendingUp },
     {
       id: 'companies',
       label: 'Реестр компаний',
@@ -43,11 +58,16 @@ export function AdminSidebar({
     { id: 'broadcast', label: 'Рассылка Telegram', icon: Send },
     {
       id: 'monitoring',
-      label: 'Мониторинг & Ошибки',
+      label: 'Мониторинг & Серверы',
       icon: Activity,
       badge: pendingIssuesCount > 0 ? `${pendingIssuesCount}` : undefined,
     },
-    { id: 'settings', label: 'Настройки и ГОСТ', icon: SlidersHorizontal },
+    {
+      id: 'settings',
+      label: 'Управление ценами & тарифами',
+      icon: SlidersHorizontal,
+      badge: '3 тарифа',
+    },
   ];
 
   return (

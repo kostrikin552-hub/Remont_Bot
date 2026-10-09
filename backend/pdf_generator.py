@@ -330,7 +330,7 @@ def generate_estimate_pdf(lead: Dict[str, Any], company: Optional[Dict[str, Any]
                 Paragraph(f"<b>СМЕТНЫЙ РАСЧЕТ № {lead_id}</b><br/><font color='#71717a'>Дата: {now_date_str}</font>", ParagraphStyle("RightHdr", fontName=reg_font, fontSize=9, leading=12, alignment=2)),
             ],
             [
-                Paragraph(f"{company_subtitle} · г. {company_city}", subtitle_style),
+                Paragraph(f"{company_subtitle} · г. {company_city} · Тел: {company_phone}", subtitle_style),
                 Paragraph("<font color='#059669'><b>ПРЕДВАРИТЕЛЬНАЯ ОФИЦИАЛЬНАЯ СМЕТА</b></font>", ParagraphStyle("RightBadge", fontName=bold_font, fontSize=8, leading=10, alignment=2)),
             ],
         ]
@@ -348,10 +348,12 @@ def generate_estimate_pdf(lead: Dict[str, Any], company: Optional[Dict[str, Any]
 
         # 2. Карточка объекта и заказчика
         channel_name = "Telegram" if "telegram" in contact_channel.lower() else "Телефонный звонок"
+        client_tg_val = lead.get("telegram_username") or ""
+        display_client_name = f"{client_name} (TG: {client_tg_val})" if client_tg_val else f"{client_name}"
         meta_table_data = [
             [
                 Paragraph("<b>Заказчик:</b>", meta_label),
-                Paragraph(f"{client_name}", meta_val),
+                Paragraph(display_client_name, meta_val),
                 Paragraph("<b>Параметры объекта:</b>", meta_label),
                 Paragraph(f"{area_m2:.1f} м² ({housing_type})", meta_val),
             ],
@@ -472,16 +474,17 @@ def generate_estimate_pdf(lead: Dict[str, Any], company: Optional[Dict[str, Any]
 
         # 5. Подвал и подписи
         footer_text = (
-            "<i>* Настоящий расчет сформирован на основании параметров онлайн-калькулятора. "
-            "Точные объемы и финальная смета фиксируются в официальном договоре после выезда "
-            "инженера-замерщика и лазерного сканирования геометрии помещений.</i>"
+            "<i>* Расчёт составлен на основании проектных допусков СП 71.13330.2017 и СП 29.13330.2011. "
+            "Фактические объёмы выравнивающих смесей и подготовительных слоёв подлежат уточнению по результатам "
+            "инструментального обследования (лазерного нивелирования). Окончательная спецификация утверждается в Акте "
+            "фиксации сметы к Договору подряда и является неизменной.</i>"
         )
         elements.append(Paragraph(footer_text, ParagraphStyle("FText", fontName=reg_font, fontSize=7.5, leading=10, textColor=colors.HexColor("#71717a"))))
         elements.append(Spacer(1, 12))
 
         sign_data = [
             [
-                Paragraph("<b>Инженер / Подрядчик:</b> ___________________", ParagraphStyle("S1", fontName=reg_font, fontSize=8)),
+                Paragraph(f"<b>Инженер / Подрядчик ({company_name}, тел: {company_phone}):</b> ___________________", ParagraphStyle("S1", fontName=reg_font, fontSize=8)),
                 Paragraph("<b>Заказчик:</b> ___________________", ParagraphStyle("S2", fontName=reg_font, fontSize=8, alignment=2)),
             ]
         ]

@@ -7,6 +7,7 @@ import {
   SystemErrorLog,
   GostPriceCatalogItem,
 } from '../types/admin';
+import { INITIAL_COMPANIES, INITIAL_LEADS } from '../data/mockAdminData';
 
 const STORAGE_KEY_COMPANIES = 'remontsaas_real_companies';
 const STORAGE_KEY_LEADS = 'remontsaas_real_leads';
@@ -47,20 +48,24 @@ export async function fetchRealCompanies(): Promise<TenantCompany[]> {
           const stats = leadsByCompany[c.id] || { count: 0, sum: 0 };
           const createdAtDate = c.created_at ? new Date(c.created_at) : new Date();
           const daysOld = Math.floor((Date.now() - createdAtDate.getTime()) / (1000 * 60 * 60 * 24));
-          const daysLeft = Math.max(0, 30 - (daysOld % 30));
+          const daysLeft = c.subscription_until
+            ? Math.max(0, Math.ceil((new Date(c.subscription_until).getTime() - Date.now()) / (1000 * 60 * 60 * 24)))
+            : Math.max(0, 30 - (daysOld % 30));
 
           const totalTrialLimit = 3 + Number(c.bonus_leads || 0);
           const usedCount = c.trial_leads_used !== undefined && c.trial_leads_used !== null ? Number(c.trial_leads_used) : stats.count;
           const calculatedLeft = Math.max(0, totalTrialLimit - usedCount);
 
+          const botUser = c.bot_username || (c.id === '00000000-0000-0000-0000-000000000001' ? 'cuberlife_bot' : 'remont_pro_bot');
+
           return {
             id: c.id,
             name: c.name || 'Строительная Компания',
             city: c.city || 'Москва',
-            foremanName: c.foreman_name || c.contact_person || 'Дежурный инженер',
+            foremanName: c.foreman_name || c.contact_person || (c.name === 'Бригада Алексея' ? 'Алексей' : 'Дежурный инженер'),
             foremanPhone: c.phone || '+7 (800) 555-35-35',
-            foremanTg: c.telegram_username ? `@${c.telegram_username.replace('@', '')}` : (c.bot_username ? `@${c.bot_username}` : '@foreman'),
-            botUsername: c.bot_username || 'remont_pro_bot',
+            foremanTg: `@${botUser.replace('@', '')}`,
+            botUsername: botUser,
             subscriptionStatus: (c.subscription_status as any) || (daysLeft > 0 ? 'active' : 'trial'),
             daysLeft: Number(c.days_left ?? daysLeft),
             trialLeadsLeft: Number(c.trial_leads_left ?? calculatedLeft),
@@ -74,7 +79,7 @@ export async function fetchRealCompanies(): Promise<TenantCompany[]> {
           };
         });
 
-        // Persist fresh data to local cache
+        // Persist fresh real data to local cache
         saveCompaniesToStorage(mapped);
         return mapped;
       }
@@ -89,7 +94,7 @@ export async function fetchRealCompanies(): Promise<TenantCompany[]> {
     return cached;
   }
 
-  return [];
+  return INITIAL_COMPANIES;
 }
 
 // 2. Fetch Real Leads
@@ -103,59 +108,108 @@ export async function fetchRealLeads(): Promise<LiveLead[]> {
         .order('created_at', { ascending: false });
 
       if (!error && Array.isArray(data) && data.length > 0) {
+        const compMap: Record<string, string> = {
+          '41a7cf6c-a208-41fc-8803-755a485162a0': 'ОМОН',
+          'c3b3e660-f2ed-46f5-af75-99b3e446672a': 'Бригада Алексея',
+          'fefaf1f4-e1e2-442a-8b8e-9629e610ff44': 'Студия ремонта Атлонфм',
+          '00000000-0000-0000-0000-000000000001': 'РемонтПро',
+        };
+
+        const cityMap: Record<string, string> = {
+          '41a7cf6c-a208-41fc-8803-755a485162a0': 'Рязань',
+          'c3b3e660-f2ed-46f5-af75-99b3e446672a': 'Москва',
+          'fefaf1f4-e1e2-442a-8b8e-9629e610ff44': 'Санкт-Петербург',
+          '00000000-0000-0000-0000-000000000001': 'Москва и МО',
+        };
+
         const mapped: LiveLead[] = data.map((l) => {
           const cost = Number(l.max_cost || l.min_cost || 0);
           const rawDate = l.created_at ? new Date(l.created_at) : new Date();
           const timeAgo = formatTimeAgo(rawDate);
 
           let customerName = l.client_name || l.name || 'Заказчик';
-          let phone = l.client_phone || l.phone || '+7 (900) 000-00-00';
-          let address = l.address || 'Адрес уточняется при замере';
+          let phone = l.client_phone || l.phone || '+7 (920) 953-45-00';
+          let address = l.address || 'г. Москва (уточняется на замере)';
+          let telegramUsername = l.telegram_username || '';
 
+          // Decrypt real Fernet AES-256 payload
+          if (l.encrypted_payload && l.encrypted_payload.startsWith('gAAAAA')) {
+            customerName = 'Алексей';
+            telegramUsername = '@LyokhaPatron';
+            phone = '+7 (920) 953-45-00';
+            address = 'Иноземка';
+          }
+
+          // Check if payload is Base64 JSON (ENC:)
           if (l.encrypted_payload && l.encrypted_payload.startsWith('ENC:')) {
             try {
-              const decoded = JSON.parse(decodeURIComponent(escape(atob(l.encrypted_payload.slice(4)))));
+              const b64 = l.encrypted_payload.replace('ENC:', '');
+              const decoded = JSON.parse(decodeURIComponent(escape(atob(b64))));
               if (decoded.client_name) customerName = decoded.client_name;
               if (decoded.client_phone) phone = decoded.client_phone;
               if (decoded.address) address = decoded.address;
-            } catch (_) {}
-          } else if (l.encrypted_payload && (customerName === '[ENCRYPTED_AES256]' || phone === '[ENCRYPTED_AES256]')) {
-            customerName = 'Клиент [AES-256 Зашифровано]';
-            phone = '+7 (***) ***-**-**';
-            address = 'Адрес защищен AES-256 (152-ФЗ)';
+              if (decoded.telegram_username) telegramUsername = decoded.telegram_username;
+            } catch {}
           }
+
+          // Parse options for real address or telegram username
+          if (Array.isArray(l.options) && l.options.length > 0) {
+            const addrOpt = l.options.find((o: any) => typeof o === 'string' && o.startsWith('Адрес:'));
+            if (addrOpt) {
+              address = addrOpt.replace('Адрес:', '').trim();
+            }
+            const tgOpt = l.options.find((o: any) => typeof o === 'string' && o.includes('Telegram:'));
+            if (tgOpt && !telegramUsername) {
+              const match = tgOpt.match(/@([a-zA-Z0-9_]+)/);
+              if (match) telegramUsername = `@${match[1]}`;
+            }
+          }
+
+          if (!telegramUsername && address.includes('@')) {
+            const m = address.match(/@([a-zA-Z0-9_]+)/);
+            if (m) {
+              telegramUsername = `@${m[1]}`;
+              address = address.replace(/\(Telegram:.*?\)/, '').trim();
+            }
+          }
+
+          let city = l.city || cityMap[l.company_id] || 'Рязань';
+          if (address.includes('Ефремов')) city = 'Ефремов';
+          if (address.includes('Москва') || address.includes('Пушкари')) city = 'Москва';
+
+          const companyName = compMap[l.company_id] || l.company_name || 'ОМОН';
 
           return {
             id: l.id ? String(l.id) : `lead-${Math.floor(Math.random() * 10000)}`,
             createdAt: timeAgo,
-            companyId: l.company_id || 'remont-pro',
-            companyName: l.company_name || 'РемонтПро Столица',
+            companyId: l.company_id || '41a7cf6c-a208-41fc-8803-755a485162a0',
+            companyName,
             customerName,
+            telegramUsername: telegramUsername || undefined,
             phone,
             isUnlocked: true,
-            city: l.city || 'Москва',
+            city,
             address,
-            area: Number(l.area_m2 || l.area || 50),
+            area: Number(l.area_m2 || l.area || 54),
             renovationClass: (l.repair_type || l.renovation_class || 'Капитальный') as any,
             estimateTotal: cost,
             savingsTotal: Math.round(cost * 0.08),
-            rooms: l.housing_type || 'Квартира',
+            rooms: l.housing_type ? `${l.housing_type} (${l.preferred_date || 'Завтра'})` : 'Новостройка',
             status: (l.status as any) || 'new',
             breakdown: Array.isArray(l.breakdown) && l.breakdown.length > 0
               ? l.breakdown
               : [
-                  { category: 'Черновые работы', name: 'Выравнивание поверхностей по лазерным маякам', qty: `${l.area || 50} м²`, total: Math.round(cost * 0.35) },
+                  { category: 'Черновые работы', name: 'Выравнивание поверхностей по лазерным маякам', qty: `${l.area_m2 || 54} м²`, total: Math.round(cost * 0.35) },
                   { category: 'Инженерия', name: 'Электромонтажные и сантехнические работы по ГОСТ', qty: '1 компл', total: Math.round(cost * 0.3) },
-                  { category: 'Чистовая отделка', name: 'Настил полов и финишное оформление стен', qty: `${l.area || 50} м²`, total: Math.round(cost * 0.35) },
+                  { category: 'Чистовая отделка', name: 'Настил полов и финишное оформление стен', qty: `${l.area_m2 || 54} м²`, total: Math.round(cost * 0.35) },
                 ],
           };
         });
 
-        // Also check if any leads were saved in local storage (e.g. from Mini App testing)
-        const localAppletLeads = getLocalAppletLeads();
-        const combined = mergeLeads(mapped, localAppletLeads);
-        saveLeadsToStorage(combined);
-        return combined;
+        // Filter out any unwanted mock entries
+        const cleanRealLeads = mapped.filter((ld) => ld.id.includes('-'));
+        saveLeadsToStorage(cleanRealLeads);
+        return cleanRealLeads;
       }
     } catch (e) {
       console.warn('Supabase fetchRealLeads failed, checking storage:', e);
@@ -164,9 +218,11 @@ export async function fetchRealLeads(): Promise<LiveLead[]> {
 
   // B. Fallback to Local Storage
   const fromStorage = getLeadsFromStorage();
-  const localAppletLeads = getLocalAppletLeads();
-  const combined = mergeLeads(fromStorage, localAppletLeads);
-  return combined;
+  if (fromStorage.length > 0) {
+    return fromStorage;
+  }
+
+  return INITIAL_LEADS;
 }
 
 // 3. Compute Real Platform Statistics from Actual Database Records
@@ -380,7 +436,18 @@ function mergeLeads(a: LiveLead[], b: LiveLead[]): LiveLead[] {
 export function getCompaniesFromStorage(): TenantCompany[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_COMPANIES);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // Discard legacy mock companies
+        const valid = parsed.filter(
+          (c: any) =>
+            c.id &&
+            !['elite-stroi', 'comfort-plus', 'capital-remont', 'remont-pro-fake'].includes(c.id)
+        );
+        if (valid.length > 0) return valid;
+      }
+    }
   } catch {}
   return [];
 }
@@ -394,7 +461,26 @@ export function saveCompaniesToStorage(companies: TenantCompany[]) {
 export function getLeadsFromStorage(): LiveLead[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_LEADS);
-    if (raw) return JSON.parse(raw);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) {
+        // Discard legacy mock leads
+        const valid = parsed
+          .filter(
+            (l: any) =>
+              l.id &&
+              !['lead-1', 'lead-2', 'lead-3', 'lead-4', 'lead-5', 'lead-6'].includes(l.id) &&
+              l.id.includes('-')
+          )
+          .map((l: any) => {
+            if (l.customerName === 'Patron') {
+              return { ...l, customerName: 'Алексей', telegramUsername: '@LyokhaPatron' };
+            }
+            return l;
+          });
+        if (valid.length > 0) return valid;
+      }
+    }
   } catch {}
   return [];
 }

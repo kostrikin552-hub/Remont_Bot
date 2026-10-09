@@ -24,6 +24,7 @@ import {
   formatTextEstimate,
 } from '../utils/estimates';
 import { formatCurrency, triggerHaptic, getDetectedBotUsername, isBotOwner } from '../utils/telegram';
+import { EngineeringReserveCard } from './EngineeringReserveCard';
 
 interface DetailedEstimateSectionProps {
   result: CalculationResult;
@@ -40,6 +41,15 @@ interface DetailedEstimateSectionProps {
     grandTotal: number;
     worksTotal: number;
     materialsTotal: number;
+    wetAreasCost?: { works: number; materials: number };
+    finishingMaterialsEstimate?: {
+      min: number;
+      max: number;
+      minPerMeter: number;
+      maxPerMeter: number;
+    };
+    wallArea?: number;
+    perimeterRatio?: number;
     totalPositions: number;
     activePositions: number;
     excludedCount: number;
@@ -548,7 +558,13 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
         </p>
       </div>
 
-      {/* 4. Viral Share Loops: Семейный совет (Шеринг супругу) & Чат ЖК */}
+      {/* 4. Рекомендуемый буфер безопасности (Инженерный резерв и скрытые факторы) */}
+      <EngineeringReserveCard
+        housingType={result.propertySubtype || result.propertyType}
+        grandTotal={estimateData.grandTotal}
+      />
+
+      {/* 5. Viral Share Loops: Семейный совет (Шеринг супругу) & Чат ЖК */}
       {onOpenShare && (
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 no-print">
           <button
@@ -601,7 +617,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
         </div>
       )}
 
-      {/* 5. Direct CTA to book measurement */}
+      {/* 6. Direct CTA to book measurement */}
       <button
         type="button"
         onClick={() => {

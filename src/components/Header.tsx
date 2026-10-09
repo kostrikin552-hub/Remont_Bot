@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Moon, Sun } from 'lucide-react';
+import { Moon, Sun, SlidersHorizontal } from 'lucide-react';
 import { CompanyConfig } from '../types';
 import { triggerHaptic } from '../utils/telegram';
 import { AvatarDownloadModal } from './AvatarDownloadModal';
@@ -52,6 +52,15 @@ export const Header: React.FC<HeaderProps> = ({
               <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium shrink-0">
                 · {company.city}
               </span>
+              {company.phone && (
+                <a
+                  href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
+                  className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 hover:underline shrink-0"
+                  title="Позвонить компании"
+                >
+                  · {company.phone}
+                </a>
+              )}
             </div>
             <p className="text-[11px] text-zinc-600 dark:text-zinc-300 font-medium leading-tight mt-0.5">
               Калькулятор ремонта под ключ
@@ -67,10 +76,11 @@ export const Header: React.FC<HeaderProps> = ({
                 triggerHaptic('light');
                 onOpenAdmin();
               }}
-              title="Открыть SuperAdmin Dashboard"
-              className="px-2 py-1.5 rounded-lg bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 border border-emerald-500/30 text-[11px] font-bold flex items-center gap-1 transition"
+              title="Открыть Панель управления (Бот & БД)"
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
             >
-              <span>Admin</span>
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Бот & БД</span>
             </button>
           )}
 

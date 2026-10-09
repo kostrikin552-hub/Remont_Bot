@@ -1,6 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
   PropertyType,
+  PropertySubtype,
+  BathroomsCount,
+  CeilingHeight,
   RenovationClass,
   RenovationClassId,
   AdditionalOption,
@@ -11,6 +14,7 @@ import {
 } from './types';
 import { Header } from './components/Header';
 import { PropertyTypeSelector } from './components/PropertyTypeSelector';
+import { EngineeringParameters } from './components/EngineeringParameters';
 import { AreaSlider } from './components/AreaSlider';
 import { RenovationClassCards } from './components/RenovationClassCards';
 import { AdditionalOptions } from './components/AdditionalOptions';
@@ -81,6 +85,9 @@ export default function App() {
 
   // Calculator State
   const [propertyType, setPropertyType] = useState<PropertyType>('new');
+  const [propertySubtype, setPropertySubtype] = useState<PropertySubtype>('new_concrete');
+  const [bathroomsCount, setBathroomsCount] = useState<BathroomsCount>(1);
+  const [ceilingHeight, setCeilingHeight] = useState<CeilingHeight>(2.7);
   const [area, setArea] = useState<number>(54);
   const [selectedClassId, setSelectedClassId] = useState<RenovationClassId>('capital');
   const [optionStates, setOptionStates] = useState<{
@@ -345,15 +352,34 @@ export default function App() {
       company.secondaryCoeff,
       selectedClassId,
       dynamicOptions,
-      excludedItemIds
+      excludedItemIds,
+      propertySubtype,
+      bathroomsCount,
+      ceilingHeight
     );
-  }, [items, area, propertyType, company.secondaryCoeff, selectedClassId, dynamicOptions, excludedItemIds]);
+  }, [
+    items,
+    area,
+    propertyType,
+    company.secondaryCoeff,
+    selectedClassId,
+    dynamicOptions,
+    excludedItemIds,
+    propertySubtype,
+    bathroomsCount,
+    ceilingHeight,
+  ]);
 
   // Unified Calculator Result derived strictly from the estimate
   const calculation: CalculationResult = useMemo(() => {
     const selectedClass =
       dynamicClasses.find((c) => c.id === selectedClassId) || dynamicClasses[1];
-    const propertyCoeff = propertyType === 'secondary' ? company.secondaryCoeff : 1.0;
+    const propertyCoeff =
+      propertySubtype === 'old_fund'
+        ? 1.45
+        : propertyType === 'secondary'
+        ? company.secondaryCoeff
+        : 1.0;
 
     let daysBase = { min: 20, max: 35 };
     if (selectedClassId === 'cosmetic') {
@@ -376,17 +402,35 @@ export default function App() {
     return {
       area,
       propertyType,
+      propertySubtype,
+      bathroomsCount,
+      ceilingHeight,
+      wallArea: estimateData.wallArea,
+      perimeterRatio: estimateData.perimeterRatio,
       propertyTypeCoeff: propertyCoeff,
       renovationClass: selectedClass,
       activeOptions: dynamicOptions.filter((o) => o.enabled),
       baseWorkCost: estimateData.worksTotal,
       addonsCost: estimateData.materialsTotal,
+      wetAreasCost: estimateData.wetAreasCost,
+      finishingMaterialsEstimate: estimateData.finishingMaterialsEstimate,
       totalCost: estimateData.grandTotal,
       priceMin: estimateData.grandTotal,
       priceMax: estimateData.grandTotal,
       estimatedDays: daysBase,
     };
-  }, [area, propertyType, selectedClassId, dynamicClasses, dynamicOptions, company.secondaryCoeff, estimateData]);
+  }, [
+    area,
+    propertyType,
+    propertySubtype,
+    bathroomsCount,
+    ceilingHeight,
+    selectedClassId,
+    dynamicClasses,
+    dynamicOptions,
+    company.secondaryCoeff,
+    estimateData,
+  ]);
 
   if (isLoadingCompany) {
     return <AppSkeleton />;
@@ -411,14 +455,17 @@ export default function App() {
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
+          onOpenAdmin={() => setViewMode('admin')}
         />
 
         {/* Main Unified Calculator */}
         <main className="px-3 space-y-2.5 mt-2">
-          {/* 1. Тип недвижимости */}
+          {/* 1. Тип недвижимости (5 градаций) */}
           <PropertyTypeSelector
             value={propertyType}
+            subtype={propertySubtype}
             onChange={(type) => setPropertyType(type)}
+            onChangeSubtype={(st) => setPropertySubtype(st)}
             secondaryCoeff={company.secondaryCoeff}
           />
 
@@ -428,7 +475,21 @@ export default function App() {
             onChange={(val) => setArea(val)}
           />
 
-          {/* 3. Тариф отделки */}
+          {/* 3. Инженерные параметры (Санузлы, высота потолков, динамические стены, чистовые материалы) */}
+          <EngineeringParameters
+            bathroomsCount={bathroomsCount}
+            onChangeBathrooms={(b) => setBathroomsCount(b)}
+            ceilingHeight={ceilingHeight}
+            onChangeCeiling={(h) => setCeilingHeight(h)}
+            area={area}
+            wallArea={estimateData.wallArea}
+            perimeterRatio={estimateData.perimeterRatio}
+            finishingEstimate={estimateData.finishingMaterialsEstimate}
+            wetAreasCost={estimateData.wetAreasCost}
+            renovationClassId={selectedClassId}
+          />
+
+          {/* 4. Тариф отделки */}
           <RenovationClassCards
             classes={dynamicClasses}
             selectedId={selectedClassId}
@@ -570,7 +631,29 @@ export default function App() {
               >
                 Публичная оферта
               </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setViewMode('admin');
+                }}
+                className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
+              >
+                Панель управления (Бот & БД)
+              </button>
             </div>
+            {company.phone && (
+              <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium pt-1">
+                Контактный телефон компании / прораба:{' '}
+                <a
+                  href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
+                  className="font-bold font-mono text-zinc-900 dark:text-white underline"
+                >
+                  {company.phone}
+                </a>
+              </div>
+            )}
             <p className="text-[10px] text-zinc-400 dark:text-zinc-500 pt-0.5">
               Оператор персональных данных: Самозанятый Кострикин Алексей Алексеевич • ИНН 711380053758
             </p>

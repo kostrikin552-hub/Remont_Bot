@@ -276,6 +276,7 @@ def find_company(identifier: str) -> Optional[Dict[str, Any]]:
 class RegisterCompanyFSM(StatesGroup):
     company_name = State()
     city = State()
+    phone = State()
     price_level = State()
     bot_token = State()
 
@@ -431,9 +432,13 @@ async def master_menu_my_bot(message: Message):
         return
 
     bot_uname = company.get("bot_username") or "moscow_remont_bot"
+    comp_phone = company.get("phone") or "+7 (920) 953-45-00"
 
     text = (
         f"🤖 <b>ВАШ ПОДКЛЮЧЕННЫЙ БОТ:</b> @{bot_uname}\n\n"
+        f"🏢 <b>Компания:</b> {company.get('name', 'Строительная компания')}\n"
+        f"📞 <b>Контактный телефон:</b> <code>{comp_phone}</code>\n"
+        f"📍 <b>Город:</b> {company.get('city', 'Москва')}\n\n"
         f"📍 <b>Ваша ссылка для клиентов:</b>\n"
         f"https://t.me/{bot_uname}\n\n"
         "💡 <b>Куда поставить эту ссылку для заказов:</b>\n"
@@ -468,6 +473,7 @@ async def master_cb_copy_avito(cb: CallbackQuery):
     company = find_company_for_admin(cb.from_user.id) or {}
     bot_uname = company.get("bot_username") or "moscow_remont_bot"
     city = company.get("city") or "Москва и МО"
+    comp_phone = company.get("phone") or "+7 (920) 953-45-00"
 
     avito_text = (
         "📋 <b>Готовый продающий текст для Авито:</b>\n"
@@ -480,6 +486,7 @@ async def master_cb_copy_avito(cb: CallbackQuery):
         f"✅ Возможность убрать ненужные работы и сэкономить\n"
         f"✅ Фиксация стоимости в договоре\n"
         f"✅ 0% предоплаты — оплата строго по факту приёмки каждого этапа!\n\n"
+        f"📞 Телефон для связи: {comp_phone}\n"
         f"📲 Переходите в Telegram и получите расчёт прямо сейчас: https://t.me/{bot_uname}</code>"
     )
     await cb.message.answer(avito_text, disable_web_page_preview=True)
@@ -1331,7 +1338,7 @@ async def master_cmd_newbot(message: Message, state: FSMContext):
     """Начало создания нового бота"""
     await state.clear()
     welcome_text = (
-        "📍 <b>Шаг 1 из 3:</b> Введите название вашей компании или бригады\n"
+        "📍 <b>Шаг 1 из 4:</b> Введите название вашей компании или бригады\n"
         "<i>(например: «РемонтСтрой» или «Бригада Алексея»):</i>"
     )
     await message.answer(welcome_text)
@@ -1353,6 +1360,7 @@ async def master_cmd_start(message: Message, state: FSMContext, command: Optiona
     if existing_comp and existing_comp.get("bot_username"):
         uname = existing_comp.get("bot_username")
         cname = existing_comp.get("name")
+        cphone = existing_comp.get("phone") or "+7 (920) 953-45-00"
         sub_info = get_company_subscription(uname, existing_comp, supabase_client)
         is_active = sub_info.get("is_active", False)
         until = sub_info.get("subscription_until")
@@ -1372,6 +1380,7 @@ async def master_cmd_start(message: Message, state: FSMContext, command: Optiona
         welcome_back = (
             f"👋 <b>С возвращением, {cname}!</b>\n\n"
             f"🤖 <b>Ваш бот:</b> @{uname}\n"
+            f"📞 <b>Телефон для клиентов:</b> <code>{cphone}</code>\n"
             f"📊 <b>Подписка:</b> {status_desc}\n\n"
             "👇 <b>Главное меню управления вашим ботом (кнопки внизу экрана):</b>"
         )
@@ -1390,7 +1399,7 @@ async def master_cmd_start(message: Message, state: FSMContext, command: Optiona
         f"{ref_bonus_badge}"
         "С помощью этого бота ваши клиенты смогут мгновенно рассчитывать стоимость ремонта, "
         "а вы будете получать горячие заявки с контактами прямо в этот чат.\n\n"
-        "📍 <b>Шаг 1 из 3:</b> Введите название вашей компании или бригады\n"
+        "📍 <b>Шаг 1 из 4:</b> Введите название вашей компании или бригады\n"
         "<i>(например: «РемонтСтрой» или «Бригада Алексея»):</i>"
     )
     await message.answer(welcome_text)
@@ -1612,17 +1621,43 @@ async def master_process_name(message: Message, state: FSMContext):
         return
 
     await state.update_data(company_name=name)
+    await state.set_state(RegisterCompanyFSM.phone)
+    await message.answer(
+        f"Отлично, «<b>{html.escape(name)}</b>»!\n\n"
+        "📍 <b>Шаг 2 из 4:</b> Укажите контактный номер телефона компании или прораба\n"
+        "<i>(например: +7 920 953-45-00 или +7 999 123-45-67). Этот номер будет указан в боте и в сметах для связи заказчиков с вами:</i>"
+    )
+
+
+@master_router.message(StateFilter(RegisterCompanyFSM.phone), F.text)
+async def master_process_phone(message: Message, state: FSMContext):
+    """Шаг 2: получение и валидация номера телефона прораба/компании"""
+    raw_phone = message.text.strip()
+    digits = re.sub(r"[^0-9]", "", raw_phone)
+    if len(digits) < 10:
+        await message.answer(
+            "⚠️ Пожалуйста, введите корректный номер телефона (минимум 10 цифр, например: <code>+7 920 953-45-00</code>):"
+        )
+        return
+
+    formatted_phone = raw_phone
+    if len(digits) == 11 and (digits.startswith("8") or digits.startswith("7")):
+        formatted_phone = f"+7 ({digits[1:4]}) {digits[4:7]}-{digits[7:9]}-{digits[9:11]}"
+    elif not formatted_phone.startswith("+"):
+        formatted_phone = f"+{formatted_phone}"
+
+    await state.update_data(phone=formatted_phone)
     await state.set_state(RegisterCompanyFSM.city)
     await message.answer(
-        f"Отлично, «<b>{name}</b>»!\n\n"
-        "📍 <b>Шаг 2 из 3:</b> Укажите ваш основной город работы\n"
-        "<i>(например: «Москва и МО», «Санкт-Петербург» или «Казань»):</i>"
+        f"✅ Контактный номер <b>{html.escape(formatted_phone)}</b> сохранён!\n\n"
+        "📍 <b>Шаг 3 из 4:</b> Укажите ваш основной город работы\n"
+        "<i>(например: «Москва и МО», «Рязань» или «Санкт-Петербург»):</i>"
     )
 
 
 @master_router.message(StateFilter(RegisterCompanyFSM.city), F.text)
 async def master_process_city(message: Message, state: FSMContext):
-    """Шаг 2: получение города и выбор ценового уровня (Layer 2 Архитектуры)"""
+    """Шаг 3: получение города и выбор ценового уровня (Layer 2 Архитектуры)"""
     city = message.text.strip()
     if len(city) < 2:
         await message.answer("Пожалуйста, введите название города:")
@@ -1633,7 +1668,7 @@ async def master_process_city(message: Message, state: FSMContext):
 
     safe_city = html.escape(city)
     text = (
-        f"📍 <b>Шаг 2.5: Ценовой уровень вашей компании</b>\n\n"
+        f"📍 <b>Шаг 3.5: Ценовой уровень вашей компании</b>\n\n"
         f"Город: <b>{safe_city}</b>\n\n"
         "Укажите ценовой уровень для автоматической калибровки смет:\n\n"
         "🔘 <b>Москва и МО</b> (высокий, ×1.3 к базовым ставкам)\n"
@@ -1700,7 +1735,7 @@ async def _apply_price_preset_step(
     keyboard = get_botfather_guide_keyboard()
     caption_text = (
         f"✅ <b>Ценовой уровень зафиксирован:</b> {label}\n\n"
-        "📍 <b>Шаг 3 из 3: Подключение вашего личного бота</b>\n\n"
+        "📍 <b>Шаг 4 из 4: Подключение вашего личного бота</b>\n\n"
         "Чтобы заявки и сметы приходили в ваш личный бот, нужен бесплатный токен от Telegram:\n\n"
         "1. Перейдите в @BotFather по кнопке ниже.\n"
         "2. Нажмите <b>Start</b> и отправьте команду <code>/newbot</code>.\n"
@@ -1882,6 +1917,7 @@ async def master_process_token(message: Message, state: FSMContext):
     bot_username = bot_info.get("username", "")
     data = await state.get_data()
     company_name = data.get("company_name", "Моя бригада")
+    phone = data.get("phone") or "+7 (920) 953-45-00"
     city = data.get("city", "Москва")
     admin_chat_id = message.from_user.id
     referred_by = data.get("referred_by")
@@ -1906,7 +1942,7 @@ async def master_process_token(message: Message, state: FSMContext):
             company_row = {
                 "name": company_name,
                 "city": city,
-                "phone": "+7 (800) 555-35-35",
+                "phone": phone,
                 "admin_chat_id": admin_chat_id,
                 "bot_token_encrypted": token_candidate,
                 "bot_username": bot_username.lower(),
@@ -1960,7 +1996,7 @@ async def master_process_token(message: Message, state: FSMContext):
         "slug": company_id,
         "name": company_name,
         "city": city,
-        "phone": "+7 (800) 555-35-35",
+        "phone": phone,
         "admin_chat_id": admin_chat_id,
         "bot_token": token_candidate,
         "bot_username": bot_username.lower(),
@@ -2044,6 +2080,7 @@ async def master_process_token(message: Message, state: FSMContext):
         f"🎉 <b>Поздравляем! Ваш личный бот готов к работе:</b> @{bot_username}\n\n"
         "✅ <b>Что настроено автоматически:</b>\n"
         f"• В чате создана кнопка «📱 Рассчитать смету онлайн» с брендом «{company_name}»\n"
+        f"• Контактный телефон компании/прораба: <code>{phone}</code> (указан в боте и в сметах)\n"
         f"• Город: {city}\n"
         "• Все заявки от ваших клиентов будут мгновенно приходить сюда!\n\n"
         f"👉 Перейдите в вашего бота @{bot_username} и нажмите кнопку "
@@ -2109,6 +2146,76 @@ async def master_cmd_set_guide_video(message: Message):
 
 
 # ---------------------------------------------------------------------------
+# Модуль «Инженерный резерв и скрытые факторы» (Профиль рисков объекта)
+# ---------------------------------------------------------------------------
+HOUSING_RISK_PROFILES: Dict[str, Dict[str, Any]] = {
+    "white_box": {
+        "percent": 5,
+        "label": "White Box (предчистовая)",
+        "risks": [
+            "Пустоты под штукатуркой застройщика (бухтение)",
+            "Геометрия углов 90° в зоне кухни и санузлов",
+            "Работоспособность кабельных линий застройщика",
+        ],
+    },
+    "new_concrete": {
+        "percent": 8,
+        "label": "Новостройка (монолит / бетон)",
+        "risks": [
+            "Перепад монолитных плит (влияет на слой стяжки от 4 до 8 см)",
+            "Отклонение монолитных пилонов от вертикали",
+            "Высота канализационного тройника и давление воды",
+        ],
+    },
+    "open_plan": {
+        "percent": 10,
+        "label": "Свободная планировка",
+        "risks": [
+            "Точные границы мокрых зон по плану БТИ",
+            "Фактический расход блоков для перегородок",
+            "Необходимость звукоизоляции межквартирных стен",
+        ],
+    },
+    "secondary_panel": {
+        "percent": 12,
+        "label": "Вторичка (типовая панель)",
+        "risks": [
+            "Состояние проводки в скрытых каналах плит",
+            "Сцепление старой штукатурки (демонтаж до основания)",
+            "Износ общедомовых стояков и чугунного раструба",
+        ],
+    },
+    "old_fund": {
+        "percent": 18,
+        "label": "Старый фонд / сталинка",
+        "risks": [
+            "Состояние балок перекрытий (металл / дерево)",
+            "Толщина старой штукатурки по дранке (до 10–15 см)",
+            "Объём засыпки шлаком и строительного мусора под полом",
+        ],
+    },
+}
+
+def get_engineering_risk_hints(subtype_or_type: Optional[str], grand_total: float) -> Tuple[int, int, str, List[str]]:
+    raw = (subtype_or_type or "new_concrete").lower()
+    if "white" in raw:
+        key = "white_box"
+    elif "open" in raw or "свобод" in raw:
+        key = "open_plan"
+    elif "old" in raw or "сталин" in raw or "старый" in raw:
+        key = "old_fund"
+    elif "secondary" in raw or "вторич" in raw:
+        key = "secondary_panel"
+    else:
+        key = "new_concrete"
+
+    prof = HOUSING_RISK_PROFILES.get(key, HOUSING_RISK_PROFILES["new_concrete"])
+    percent = prof["percent"]
+    reserve_amount = int(round((grand_total * (percent / 100.0)) / 100.0) * 100)
+    return percent, reserve_amount, prof["label"], prof["risks"]
+
+
+# ---------------------------------------------------------------------------
 # FastAPI Модели данных
 # ---------------------------------------------------------------------------
 class LeadCreateRequest(BaseModel):
@@ -2118,6 +2225,13 @@ class LeadCreateRequest(BaseModel):
     city: Optional[str] = Field(default="Москва и МО", description="Город объекта")
     area: float = Field(..., description="Площадь в м²")
     property_type: str = Field(default="new", description="new | secondary")
+    property_subtype: Optional[str] = Field(default="new_concrete", description="new_concrete | new_whitebox | new_open_plan | secondary_standard | old_fund")
+    bathrooms_count: Optional[float] = Field(default=1.0, description="Количество санузлов (1, 1.5, 2, 3)")
+    ceiling_height: Optional[float] = Field(default=2.7, description="Высота потолков в метрах (2.7, 3.0, 3.2, 3.5)")
+    key_status: Optional[str] = Field(default="ready", description="ready (ключи на руках) | in_30_days | construction (дом строится)")
+    lead_score: Optional[int] = Field(default=None, description="Автоматический скоринг 0-100")
+    lead_grade: Optional[str] = Field(default="warm", description="vip | warm | cold")
+    is_visit_allowed: Optional[bool] = Field(default=True, description="Разрешен ли физический выезд замерщика")
     renovation_class: str = Field(default="Капитальный", description="Тариф ремонта")
     price_min: float = Field(..., description="Минимальная стоимость вилки")
     price_max: float = Field(..., description="Максимальная стоимость вилки")
@@ -2127,6 +2241,7 @@ class LeadCreateRequest(BaseModel):
     communication: Optional[str] = Field(default="telegram", description="telegram | whatsapp | call")
     address: Optional[str] = Field(default=None, description="Адрес объекта или ЖК")
     comment: Optional[str] = Field(default=None)
+    telegram_username: Optional[str] = Field(default=None, description="Username клиента в Telegram (@username)")
     agreement_152fz: bool = Field(default=True)
 
 
@@ -2903,6 +3018,7 @@ async def client_bot_webhook(company_id: str, request: Request):
             f"Здравствуйте!\n\n"
             f"🏠 <b>Добро пожаловать в сервис расчёта стоимости ремонта «{company_name}».</b>\n\n"
             f"📍 Город: <b>{company_city}</b>\n"
+            f"📞 Контактный телефон компании/прораба: <code>{company_phone}</code>\n"
             "⚡️ <b>Работаем без предоплаты:</b> оплата поэтапно по факту приёмки качества.\n\n"
             "У нас <b>нет приблизительных цен «на глаз»</b> — все расценки зафиксированы в договоре и смете.\n\n"
             "👇 <b>Нажмите любую кнопку ниже:</b>\n"
@@ -2955,6 +3071,7 @@ async def client_bot_webhook(company_id: str, request: Request):
             "• Оценка электропроводки и сантехнических узлов\n"
             "• Подробная смета на бланке за 24 часа — <b>бесплатно</b>\n"
             "• 3D-план расстановки мебели и розеток — <b>в подарок!</b>\n\n"
+            f"📞 Прямой номер компании/прораба для связи: <code>{company_phone}</code>\n\n"
             "Нажмите кнопку ниже, чтобы забронировать замер:"
         )
         zamer_kb = {
@@ -2981,6 +3098,7 @@ async def client_bot_webhook(company_id: str, request: Request):
             f"💬 <b>Служба клиентского сервиса:</b>\n\n"
             f"🏢 <b>Компания:</b> {company_name}\n"
             f"📍 <b>Город:</b> {company_city}\n"
+            f"📞 <b>Телефон:</b> <code>{company_phone}</code>\n"
             f"⏰ <b>Время работы:</b> ежедневно с 09:00 до 21:00\n\n"
             "Работаем строго по договору с гарантией 36 месяцев и 0% предоплатой."
         )
@@ -3013,7 +3131,8 @@ async def client_bot_webhook(company_id: str, request: Request):
             "Да. Составляется подробная построчная смета с фиксированными расценками, исключающая доплаты.\n\n"
             "📦 <b>3. Кто закупает черновые материалы?</b>\n"
             "Мы закупаем смеси Knauf, кабели ГОСТ и трубы Rehau напрямую с оптовых баз со скидкой до 20%.\n\n"
-            "⏳ <b>4. Срок гарантии:</b> 36 месяцев (3 года) по договору."
+            "⏳ <b>4. Срок гарантии:</b> 36 месяцев (3 года) по договору.\n\n"
+            f"📞 <b>Контактный телефон компании/прораба:</b> <code>{company_phone}</code>"
         )
         faq_kb = {
             "inline_keyboard": [
@@ -3530,35 +3649,80 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                 f"✅ <i>Заявка принята в работу без ограничений.</i>"
             )
 
+        client_tg = (lead.telegram_username or "").strip()
+        if client_tg.startswith("@"):
+            client_tg = client_tg[1:]
+        if not client_tg:
+            tg_user_match = None
+            if lead.comment:
+                tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", lead.comment)
+            if not tg_user_match and lead.active_options:
+                for opt in lead.active_options:
+                    tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", str(opt))
+                    if tg_user_match:
+                        break
+            if tg_user_match:
+                client_tg = tg_user_match.group(1)
+
+        tg_line = f"✈️ <b>Telegram:</b> @{client_tg}\n" if client_tg else ""
+
+        # Скоринг лида и статус ключей (Smart Dispatcher)
+        score_val = lead.lead_score if lead.lead_score is not None else 70
+        is_visit_blocked = lead.key_status == "construction" or (lead.is_visit_allowed is False)
+        
+        if lead.lead_grade == "vip" or score_val >= 80:
+            scoring_badge = f"🔥 <b>СКОРИНГ: СРОЧНЫЙ КЛИЕНТ ({score_val}/100)</b>\n"
+        elif is_visit_blocked or lead.lead_grade == "cold":
+            scoring_badge = f"❄️ <b>СКОРИНГ: ПРИЦЕНКА / ДОЛГИЙ ЦИКЛ ({score_val}/100)</b>\n"
+        else:
+            scoring_badge = f"🟡 <b>СКОРИНГ: ТЁПЛЫЙ ИНТЕРЕС ({score_val}/100)</b>\n"
+
+        if is_visit_blocked:
+            visit_warning = (
+                "⛔️ <b>ВНИМАНИЕ ПРОРАБУ: ФИЗИЧЕСКИЙ ВЫЕЗД ЗАПРЕЩЕН!</b>\n"
+                "<i>Дом строится, ключей нет! Не тратьте бензин и время мастера.</i>\n"
+                "👉 <b>Действие:</b> Проведите онлайн-консультацию или добавьте клиента в базу прогрева.\n\n"
+            )
+        elif lead.key_status == "in_30_days":
+            visit_warning = "🔑 <b>Статус ключей:</b> Ожидаются в течение 30 дней (запланируйте предварительный созвон)\n\n"
+        else:
+            visit_warning = "🟢 <b>Статус ключей:</b> Ключи на руках! Можно назначать замерщика на объекте.\n\n"
+
+        # Технические параметры: санузлы и высота потолка
+        baths_text = f"{lead.bathrooms_count:g} санузла" if lead.bathrooms_count and lead.bathrooms_count > 1 else "1 санузел"
+        ceil_text = f", потолки {lead.ceiling_height} м" if lead.ceiling_height else ""
+
+        # Модуль «Инженерный резерв и скрытые факторы» (подсказка прорабу перед выездом)
+        res_pct, res_sum, res_label, res_risks = get_engineering_risk_hints(lead.property_subtype or lead.property_type, float(total_cost_num))
+        risks_lines = "\n".join([f" • {r}" for r in res_risks])
+        reserve_block = (
+            f"🛡 <b>Буфер скрытых работ:</b> +{res_pct}% ({res_sum:,.0f} ₽)\n"
+            f"🔍 <b>Точки лазерного контроля на замере ({res_label}):</b>\n"
+            f"{risks_lines}\n\n"
+        ).replace(",", " ")
+
         notification_text = (
-            f"🚨 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР!</b>\n"
+            f"⚡ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР [#{lead_id}]</b>\n"
             "━━━━━━━━━━━━━━━━━━\n"
+            f"{scoring_badge}"
+            f"{visit_warning}"
             f"{trial_header}"
             f"👤 <b>Клиент:</b> {safe_name}\n"
+            f"{tg_line}"
             f"📱 <b>Телефон:</b> <code>{safe_phone}</code>\n"
             f"📍 <b>Адрес:</b> {safe_addr}\n"
             f"💬 <b>Связь:</b> {safe_comm}\n"
             f"📅 <b>Желаемая дата замера:</b> {safe_date}\n\n"
-            f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м², {lead.renovation_class}\n"
-            f"💰 <b>Сумма сметы:</b> <b>{total_cost_str} ₽</b>\n"
-            f"{options_str}"
+            f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м² ({baths_text}{ceil_text}), {lead.renovation_class}\n"
+            f"💰 <b>Расчётная смета:</b> <b>{total_cost_str} ₽</b>\n"
+            f"{options_str}\n"
+            f"{reserve_block}"
             f"{trial_footer}"
         )
 
         inline_keyboard = []
-        # Кнопка быстрой связи в Telegram (вместо WhatsApp)
-        tg_user_match = None
-        if lead.comment:
-            tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", lead.comment)
-        if not tg_user_match and lead.active_options:
-            for opt in lead.active_options:
-                tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", str(opt))
-                if tg_user_match:
-                    break
-
-        if tg_user_match:
-            tg_username = tg_user_match.group(1)
-            inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/{tg_username}"}])
+        if client_tg:
+            inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/{client_tg}"}])
         elif digits_only:
             inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/+{digits_only}"}])
 
