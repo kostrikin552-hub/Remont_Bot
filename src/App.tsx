@@ -20,6 +20,7 @@ import { RenovationClassCards } from './components/RenovationClassCards';
 import { AdditionalOptions } from './components/AdditionalOptions';
 import { StickyBottomBar } from './components/StickyBottomBar';
 import { DetailedEstimateSection } from './components/DetailedEstimateSection';
+import { CalculatorScreen } from './components/CalculatorScreen';
 import { BookingModal } from './components/BookingModal';
 import { ViralShareModal } from './components/ViralShareModal';
 import { CompetitorAuditModal } from './components/CompetitorAuditModal';
@@ -539,7 +540,25 @@ export default function App() {
             onToggle={handleToggleOption}
           />
 
-          {/* 5. Построчная смета работ и материалов (Строго по расценкам компании) */}
+          {/* 5. Модуль решения болей сметы: 100% твёрдая цена & Полный бюджет новоселья (25/40/25/10) */}
+          <CalculatorScreen
+            initialArea={area}
+            initialHousingType={
+              propertySubtype === 'white_box'
+                ? 'white_box'
+                : propertySubtype === 'old_fund'
+                ? 'old_fund'
+                : propertyType === 'secondary'
+                ? 'secondary'
+                : 'new_concrete'
+            }
+            initialRepairClass={selectedClassId}
+            initialBathroomsCount={bathroomsCount >= 2 ? 2 : 1}
+            grandTotalOverride={estimateData.grandTotal}
+            onOpenBooking={() => setIsBookingOpen(true)}
+          />
+
+          {/* 6. Построчная смета работ и материалов (Строго по расценкам компании) */}
           <DetailedEstimateSection
             result={calculation}
             company={company}

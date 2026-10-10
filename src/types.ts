@@ -121,6 +121,7 @@ export interface LeadPayload {
   bathrooms_count?: number;
   ceiling_height?: number;
   key_status?: KeyStatus;
+  is_visit_allowed?: boolean;
   lead_score?: number;
   lead_grade?: LeadScoringGrade;
   renovation_class: string;

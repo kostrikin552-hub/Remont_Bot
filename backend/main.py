@@ -3701,6 +3701,10 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             f"{risks_lines}\n\n"
         ).replace(",", " ")
 
+        full_move_in_budget_num = float(total_cost_num) * 2.2
+        full_budget_str = f"{full_move_in_budget_num:,.0f}".replace(",", " ")
+        full_budget_line = f"🏠 <b>Бюджет заселения (2.2×):</b> {full_budget_str} ₽ (по формуле 25/40/25/10)\n"
+
         notification_text = (
             f"⚡ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР [#{lead_id}]</b>\n"
             "━━━━━━━━━━━━━━━━━━\n"
@@ -3715,6 +3719,7 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
             f"📅 <b>Желаемая дата замера:</b> {safe_date}\n\n"
             f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м² ({baths_text}{ceil_text}), {lead.renovation_class}\n"
             f"💰 <b>Расчётная смета:</b> <b>{total_cost_str} ₽</b>\n"
+            f"{full_budget_line}"
             f"{options_str}\n"
             f"{reserve_block}"
             f"{trial_footer}"

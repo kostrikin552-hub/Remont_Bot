@@ -694,25 +694,46 @@ async def handle_webapp_data(message: Message, bot: Bot):
         price_max = data.get("priceMax", 0)
         date_visit = data.get("date", "В ближайшее время")
         comm_channel = data.get("communication", "Telegram")
+        key_status = data.get("keyStatus") or data.get("key_status", "ready")
+        is_visit_blocked = key_status == "construction" or (data.get("isVisitAllowed") is False)
 
         # 1. Ответ пользователю в чат бота
-        confirmation_text = (
-            f"✅ <b>Заявка #{lead_id} на бесплатный замер оформлена!</b>\n\n"
-            f"👤 <b>Заказчик:</b> {name}\n"
-            f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
-            f"📍 <b>Город:</b> {city}\n"
-            f"📐 <b>Объект:</b> {area} м² ({prop_type})\n"
-            f"🏷 <b>Выбранный тариф:</b> {tariff}\n"
-            f"💰 <b>Диапазон сметы:</b> {price_min:,.0f} — {price_max:,.0f} ₽\n"
-            f"📅 <b>Желаемая дата выезда:</b> {date_visit}\n"
-            f"💬 <b>Канал связи:</b> {comm_channel}\n\n"
-            f"📞 <b>Телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n\n"
-            "🎁 <b>За вами зафиксированы бонусы:</b>\n"
-            "• Лазерный замер объекта — 0 ₽\n"
-            "• Построчная смета на бланке за 24 ч — 0 ₽\n"
-            "• 3D-планировка расстановки мебели — в подарок!\n\n"
-            "Инженер свяжется с вами в течение 15 минут для подтверждения времени."
-        )
+        if is_visit_blocked:
+            confirmation_text = (
+                f"✅ <b>Заявка #{lead_id} на онлайн-консультацию оформлена!</b>\n\n"
+                f"👤 <b>Заказчик:</b> {name}\n"
+                f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
+                f"📍 <b>Город:</b> {city}\n"
+                f"📐 <b>Объект:</b> {area} м² ({prop_type}) — <i>дом ещё строится</i>\n"
+                f"🏷 <b>Выбранный тариф:</b> {tariff}\n"
+                f"💰 <b>Диапазон сметы:</b> {price_min:,.0f} — {price_max:,.0f} ₽\n"
+                f"📅 <b>Формат:</b> Онлайн-разбор планировки\n"
+                f"💬 <b>Канал связи:</b> {comm_channel}\n\n"
+                f"📞 <b>Телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n\n"
+                "🎁 <b>За вами зафиксированы бонусы:</b>\n"
+                "• Фиксация цены сметы со скидкой до получения ключей\n"
+                "• Экспресс-аудит планировки от главного инженера — 0 ₽\n"
+                "• 3D-планировка расстановки мебели — в подарок!\n\n"
+                "Инженер свяжется с вами в течение 15 минут для онлайн-консультации."
+            )
+        else:
+            confirmation_text = (
+                f"✅ <b>Заявка #{lead_id} на бесплатный замер оформлена!</b>\n\n"
+                f"👤 <b>Заказчик:</b> {name}\n"
+                f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
+                f"📍 <b>Город:</b> {city}\n"
+                f"📐 <b>Объект:</b> {area} м² ({prop_type})\n"
+                f"🏷 <b>Выбранный тариф:</b> {tariff}\n"
+                f"💰 <b>Диапазон сметы:</b> {price_min:,.0f} — {price_max:,.0f} ₽\n"
+                f"📅 <b>Желаемая дата выезда:</b> {date_visit}\n"
+                f"💬 <b>Канал связи:</b> {comm_channel}\n\n"
+                f"📞 <b>Телефон компании/прораба:</b> <code>{COMPANY_PHONE}</code>\n\n"
+                "🎁 <b>За вами зафиксированы бонусы:</b>\n"
+                "• Лазерный замер объекта — 0 ₽\n"
+                "• Построчная смета на бланке за 24 ч — 0 ₽\n"
+                "• 3D-планировка расстановки мебели — в подарок!\n\n"
+                "Инженер свяжется с вами в течение 15 минут для подтверждения времени."
+            )
 
         await message.answer(
             confirmation_text,
@@ -731,16 +752,32 @@ async def handle_webapp_data(message: Message, bot: Bot):
                 res_pct, res_sum, res_label, res_risks = get_bot_reserve_data(data.get("propertySubtype") or data.get("propertyType") or "new", calc_total)
                 risks_list = "\n".join([f" • {r}" for r in res_risks])
 
+                # Бюджет заселения по формуле 25/40/25/10 (2.2х)
+                full_move_in_budget = calc_total * 2.2
+
+                if is_visit_blocked:
+                    key_warning = (
+                        "⛔️ <b>ВНИМАНИЕ ПРОРАБУ: ФИЗИЧЕСКИЙ ВЫЕЗД ЗАПРЕЩЕН!</b>\n"
+                        "<i>Дом строится, ключей нет! Не тратьте бензин и время мастера.</i>\n"
+                        "👉 <b>Действие:</b> Проведите онлайн-консультацию или добавьте клиента в прогрев.\n\n"
+                    )
+                elif key_status == "in_30_days":
+                    key_warning = "🔑 <b>Статус ключей:</b> Ожидаются в течение 30 дней (предварительный созвон)\n\n"
+                else:
+                    key_warning = "🟢 <b>Статус ключей:</b> Ключи на руках! Можно выезжать на лазерный замер.\n\n"
+
                 admin_alert = (
                     f"⚡ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР [#{lead_id}]</b>\n\n"
+                    f"{key_warning}"
                     f"👤 <b>Клиент:</b> {name} (@{clean_tg_uname or 'не указан'})\n"
                     f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
                     f"🏢 <b>Объект:</b> {prop_type}, {area} м², {tariff}\n"
-                    f"💰 <b>Расчётная смета:</b> {price_min:,.0f} – {price_max:,.0f} ₽\n\n"
+                    f"💰 <b>Расчётная смета:</b> {price_min:,.0f} – {price_max:,.0f} ₽\n"
+                    f"🏠 <b>Бюджет заселения (2.2×):</b> {full_move_in_budget:,.0f} ₽ (по формуле 25/40/25/10)\n\n"
                     f"🛡 <b>Буфер скрытых работ:</b> +{res_pct}% ({res_sum:,.0f} ₽)\n"
                     f"🔍 <b>Точки лазерного контроля на замере:</b>\n"
                     f"{risks_list}\n\n"
-                    f"📅 <b>Дата замера:</b> {date_visit}\n"
+                    f"📅 <b>Дата:</b> {date_visit}\n"
                     f"💬 <b>Канал связи:</b> {comm_channel}\n"
                 ).replace(",", " ")
                 ik_admin = []
