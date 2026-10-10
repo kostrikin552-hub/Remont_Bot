@@ -40,6 +40,8 @@ import {
   DEFAULT_COMPANY_ID,
 } from './lib/supabase';
 import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
+import { AdminAccessGate } from './components/admin/AdminAccessGate';
+import { isSuperAdminUser } from './utils/auth';
 import { ChevronDown, SearchCheck, ArrowRight, LayoutDashboard, Calculator as CalcIcon } from 'lucide-react';
 
 const FAQ_ITEMS = [
@@ -111,12 +113,14 @@ export default function App() {
   const [viewMode, setViewMode] = useState<'miniapp' | 'admin'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
-      if (
+      const wantsAdmin =
         urlParams.get('admin') === 'true' ||
         urlParams.get('saas') === 'true' ||
         urlParams.get('mode') === 'admin' ||
-        window.location.pathname.startsWith('/admin')
-      ) {
+        window.location.pathname.startsWith('/admin');
+
+      // СТРОГО: доступ к админ-панели ТОЛЬКО при подтверждении владельца (ID 5629144056)
+      if (wantsAdmin && isSuperAdminUser()) {
         return 'admin';
       }
     }
@@ -433,12 +437,24 @@ export default function App() {
     estimateData,
   ]);
 
+  const isSuperAdmin = isSuperAdminUser();
+
   if (isLoadingCompany) {
     return <AppSkeleton />;
   }
 
   // If in SuperAdmin dashboard mode, render the full-scale B2B SaaS platform
   if (viewMode === 'admin') {
+    if (!isSuperAdmin) {
+      return (
+        <AdminAccessGate
+          onAuthorized={() => setViewMode('admin')}
+          onCancel={() => setViewMode('miniapp')}
+          isDark={isDark}
+        />
+      );
+    }
+
     return (
       <SuperAdminDashboard
         onSwitchToMiniApp={() => setViewMode('miniapp')}
@@ -456,7 +472,7 @@ export default function App() {
           isDark={isDark}
           onToggleTheme={handleToggleTheme}
           company={company}
-          onOpenAdmin={() => setViewMode('admin')}
+          onOpenAdmin={isSuperAdmin ? () => setViewMode('admin') : undefined}
         />
 
         {/* Main Unified Calculator */}
@@ -544,7 +560,7 @@ export default function App() {
           <CalculatorScreen
             initialArea={area}
             initialHousingType={
-              propertySubtype === 'white_box'
+              propertySubtype === 'new_whitebox'
                 ? 'white_box'
                 : propertySubtype === 'old_fund'
                 ? 'old_fund'
@@ -650,17 +666,21 @@ export default function App() {
               >
                 Публичная оферта
               </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('medium');
-                  setViewMode('admin');
-                }}
-                className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
-              >
-                Панель управления (Бот & БД)
-              </button>
+              {isSuperAdmin && (
+                <>
+                  <span>•</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('medium');
+                      setViewMode('admin');
+                    }}
+                    className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
+                  >
+                    Панель управления (Бот & БД)
+                  </button>
+                </>
+              )}
             </div>
             {company.phone && (
               <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium pt-1">

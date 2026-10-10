@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Moon, Sun, SlidersHorizontal } from 'lucide-react';
 import { CompanyConfig } from '../types';
 import { triggerHaptic } from '../utils/telegram';
+import { isSuperAdminUser } from '../utils/auth';
 import { AvatarDownloadModal } from './AvatarDownloadModal';
 
 interface HeaderProps {
@@ -18,6 +19,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenAdmin,
 }) => {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const isSuperAdmin = isSuperAdminUser();
 
   return (
     <>
@@ -69,14 +71,14 @@ export const Header: React.FC<HeaderProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5">
-          {onOpenAdmin && (
+          {isSuperAdmin && onOpenAdmin && (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic('light');
                 onOpenAdmin();
               }}
-              title="Открыть Панель управления (Бот & БД)"
+              title="Открыть Панель управления (доступно только владельцу)"
               className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer"
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />

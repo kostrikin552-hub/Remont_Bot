@@ -30,6 +30,7 @@ import {
   INITIAL_ERROR_LOGS,
 } from '../../data/mockAdminData';
 import { TenantCompany, LiveLead, SaasStats, SystemServiceNode, SystemErrorLog } from '../../types/admin';
+import { isSuperAdminUser, SUPERADMIN_TELEGRAM_ID, logoutSuperAdmin } from '../../utils/auth';
 import {
   ChevronRight,
   Check,
@@ -80,8 +81,14 @@ export function SuperAdminDashboard({
     computeRealStats(companies, leads, nodes)
   );
 
+  const isAuthorized = isSuperAdminUser();
+
   // Fetch real data on component mount
   useEffect(() => {
+    if (!isAuthorized) {
+      setIsLoadingRealData(false);
+      return;
+    }
     let isMounted = true;
 
     async function loadRealData() {
@@ -265,6 +272,30 @@ export function SuperAdminDashboard({
     }
   };
 
+  if (!isAuthorized) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-4">
+        <div className="max-w-md w-full bg-zinc-900 border border-red-800/60 rounded-2xl p-6 text-center space-y-4 shadow-2xl">
+          <div className="w-12 h-12 mx-auto rounded-full bg-red-950/60 border border-red-700 flex items-center justify-center text-red-400 text-xl font-bold">
+            ⛔️
+          </div>
+          <h2 className="text-lg font-bold text-red-200">Доступ заблокирован</h2>
+          <p className="text-xs text-zinc-400 leading-relaxed">
+            Панель управления ботом и базой данных доступна исключительно владельцу с Telegram ID: <span className="font-mono text-emerald-400 font-bold">{SUPERADMIN_TELEGRAM_ID}</span>.
+          </p>
+          {onSwitchToMiniApp && (
+            <button
+              onClick={onSwitchToMiniApp}
+              className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 text-white text-xs font-bold rounded-lg transition cursor-pointer"
+            >
+              Вернуться в калькулятор
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-[#f4f4f5] dark:bg-[#09090b] text-[#18181b] dark:text-[#f4f4f5] overflow-hidden font-['Manrope',sans-serif] antialiased selection:bg-zinc-800 selection:text-white dark:selection:bg-zinc-200 dark:selection:text-zinc-950 transition-colors">
       {/* Sidebar Navigation */}
@@ -368,13 +399,28 @@ export function SuperAdminDashboard({
 
             {/* Admin Profile */}
             <div className="flex items-center gap-1.5 sm:gap-2 pl-1 sm:pl-2 border-l border-zinc-200 dark:border-zinc-800 shrink-0">
-              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-extrabold text-[11px] sm:text-xs flex items-center justify-center shadow-xs">
-                SA
+              <div className="w-6 h-6 sm:w-7 sm:h-7 rounded-lg bg-emerald-600 text-white font-extrabold text-[11px] sm:text-xs flex items-center justify-center shadow-xs">
+                👑
               </div>
               <div className="hidden xl:block text-left">
-                <div className="text-xs font-bold text-zinc-950 dark:text-white leading-tight">SuperAdmin</div>
-                <div className="text-[10px] text-zinc-500 font-mono">root@remontsaas.ru</div>
+                <div className="text-xs font-bold text-zinc-950 dark:text-white leading-tight">Владелец</div>
+                <div className="text-[10px] text-zinc-500 font-mono">ID: {SUPERADMIN_TELEGRAM_ID}</div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  logoutSuperAdmin();
+                  if (onSwitchToMiniApp) {
+                    onSwitchToMiniApp();
+                  } else {
+                    window.location.href = '/';
+                  }
+                }}
+                title="Завершить сессию администратора"
+                className="p-1 sm:px-2 py-1 rounded-md text-[11px] font-bold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/40 transition cursor-pointer"
+              >
+                Выйти
+              </button>
             </div>
           </div>
         </header>

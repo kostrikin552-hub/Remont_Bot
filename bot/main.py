@@ -35,7 +35,8 @@ WEBAPP_URL = os.getenv(
     "WEBAPP_URL",
     "https://ais-pre-3xeyotanildylb6nzg47ki-97067624345.europe-west1.run.app",
 )
-ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "")
+SUPERADMIN_ID = 5629144056
+ADMIN_CHAT_ID = os.getenv("ADMIN_CHAT_ID", "5629144056")
 
 # Настройка логирования
 logging.basicConfig(
@@ -432,6 +433,41 @@ async def msg_contact_pro(message_or_call: Any):
         ]
     )
     await message.answer(text=text, reply_markup=kb, parse_mode=ParseMode.HTML)
+
+
+# ---------------------------------------------------------------------------
+# Секретная команда /admin (Строго для владельца с ID 5629144056)
+# ---------------------------------------------------------------------------
+@router.message(Command("admin"))
+async def cmd_admin_secret(message: Message):
+    """Секретный доступ к панели управления: доступен ИСКЛЮЧИТЕЛЬНО владельцу с ID 5629144056"""
+    user_id = message.from_user.id if message.from_user else 0
+    if user_id != SUPERADMIN_ID:
+        # Для посторонних пользователей команда не существует и ничего не возвращает
+        return
+
+    admin_url = f"{get_webapp_url()}&admin=true&admin_id={SUPERADMIN_ID}"
+    ik = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🎛 Открыть Панель управления (Бот & БД)",
+                    web_app=WebAppInfo(url=admin_url),
+                )
+            ]
+        ]
+    )
+    await message.answer(
+        f"👑 <b>Панель управления владельца (ID: {SUPERADMIN_ID})</b>\n\n"
+        "Вам доступен полный контроль:\n"
+        "• Мониторинг входящих заявок и клиентов\n"
+        "• Управление расценками и технологическими коэффициентами\n"
+        "• Проверка подключений Telegram Webhook и базы данных\n"
+        "• Статус серверов и логи\n\n"
+        "<i>Ни один клиент не имеет доступа к этой панели.</i>",
+        reply_markup=ik,
+        parse_mode=ParseMode.HTML,
+    )
 
 
 # ---------------------------------------------------------------------------

@@ -288,9 +288,15 @@ export function isBotOwner(company?: {
   if (typeof window === 'undefined') return false;
 
   const currentTgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+
+  // 1. Главный владелец платформы (5629144056) всегда имеет права владельца
+  if (currentTgUserId && String(currentTgUserId) === '5629144056') {
+    return true;
+  }
+
   const ownerId = company?.ownerId || company?.adminChatId;
 
-  // 1. Если запуск внутри Telegram:
+  // 2. Если запуск внутри Telegram:
   // Строгая сверка Telegram ID текущего пользователя с ID владельца бота
   if (currentTgUserId && ownerId) {
     if (String(currentTgUserId) === String(ownerId)) {
