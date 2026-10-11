@@ -288,12 +288,12 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
         logger.warning(f"Не удалось установить MenuButtonWebApp: {e}")
 
     if is_shared:
-        tariff_names = {
+        class_names = {
             "cosmetic": "Косметический",
             "capital": "Капитальный (ГОСТ)",
             "designer": "Дизайнерский",
         }
-        t_name = tariff_names.get(shared_class, "Капитальный")
+        t_name = class_names.get(shared_class, "Капитальный")
         deep_app_url = f"{get_webapp_url(company_id, bot_uname)}&area={shared_area}&class={shared_class}&utm_source=shared_tma"
 
         share_greeting = (
