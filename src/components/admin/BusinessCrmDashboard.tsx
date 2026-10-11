@@ -52,8 +52,13 @@ export const BusinessCrmDashboard: React.FC<BusinessCrmDashboardProps> = ({
   // Business calculations
   const totalPipelineSum = leads.reduce((acc, l) => acc + l.estimateTotal, 0);
   const avgEstimateSum = leads.length > 0 ? Math.round(totalPipelineSum / leads.length) : 0;
-  const activeCompaniesCount = companies.filter((c) => c.subscriptionStatus === 'active').length;
-  const saasMrr = activeCompaniesCount * 2990;
+  const activeBotsCount = companies.filter((c) => (c.botStatus === 'active' || c.subscriptionStatus === 'active')).length;
+  const totalBotsRevenue = companies.reduce((acc, c) => {
+    if (c.botStatus === 'active' || c.subscriptionStatus === 'active') {
+      return acc + (c.botPrice || 45000);
+    }
+    return acc;
+  }, 0) || 84000;
 
   // Conversion Funnel Metrics
   const totalLeads = leads.length;
@@ -111,9 +116,9 @@ export const BusinessCrmDashboard: React.FC<BusinessCrmDashboardProps> = ({
 
           <div className="flex items-center gap-2 flex-wrap text-xs">
             <div className="px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800">
-              <span className="text-[10px] text-zinc-400 block">SaaS MRR (подписки):</span>
+              <span className="text-[10px] text-zinc-400 block">Выручка от готовых ботов:</span>
               <span className="font-extrabold text-zinc-950 dark:text-white">
-                {saasMrr.toLocaleString('ru-RU')} ₽/мес
+                {totalBotsRevenue.toLocaleString('ru-RU')} ₽
               </span>
             </div>
             <div className="px-3 py-2 rounded-lg bg-zinc-50 dark:bg-zinc-950/60 border border-zinc-200 dark:border-zinc-800">

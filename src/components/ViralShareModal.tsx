@@ -86,7 +86,7 @@ export const ViralShareModal: React.FC<ViralShareModalProps> = ({
 
   // Текст для отправки (Механика 1: Семейный совет / Поделиться)
   const savingsPart = savings > 0 ? ` (сэкономили ${formatCurrency(savings)} на исключении лишних позиций)` : '';
-  const familyText = `Посмотри предварительную смету нашего ремонта: ${formatCurrency(result.totalCost)} на ${result.area} м² (тариф «${selectedClass.title}»)${savingsPart}. Я проверил расценки по ГОСТ без скрытых доплат в боте «${company.name}» (@${botUsername}). Посмотри интерактивный расклад и скажи, что думаешь:`;
+  const familyText = `Посмотри предварительную смету нашего ремонта: ${formatCurrency(result.totalCost)} на ${result.area} м² (пакет отделки «${selectedClass.title}»)${savingsPart}. Я проверил расценки по ГОСТ без скрытых доплат в боте «${company.name}» (@${botUsername}). Посмотри интерактивный расклад и скажи, что думаешь:`;
 
   // Текст для чата ЖК (Механика 3: Посев в чаты новостроек)
   const communityText = `Соседи из ${jkName.trim() || 'нашего ЖК'}! Посчитал в сметном боте @${botUsername} («${company.name}») реальную стоимость ремонта на типовую квартиру ${result.area} м² по действующим расценкам 2026 года. Стяжка, стены по маякам, электрика по ГОСТу — вышло ~${formatCurrency(result.totalCost)} (без накруток за бренд и без скрытых доплат). Кому актуально прицениться к отделке — вот открытый интерактивный расклад:`;
@@ -305,11 +305,11 @@ export const ViralShareModal: React.FC<ViralShareModalProps> = ({
               </div>
             </div>
 
-            {/* Поясняющая плашка: ссылка на бота, а не на мини-апп */}
+            {/* Поясняющая плашка: ссылка на бота компании */}
             <div className="p-2.5 rounded-xl bg-emerald-50/80 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-800/60 flex items-start gap-2">
               <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
               <p className="text-[11px] text-emerald-900 dark:text-emerald-200 leading-snug">
-                <b>Защита лида:</b> отправляется ссылка именно на бота компании <code>@{botUsername}</code> (а не на мини-приложение). Получатель переходит в диалог с ботом, нажимает «Старт» и навсегда фиксируется как ваш лид в Telegram.
+                <b>Прямая связь с компанией:</b> отправляется персональная ссылка на бота компании <code>@{botUsername}</code>. Получатель сразу видит открытую смету и может задать вопрос инженеру.
               </p>
             </div>
           </div>

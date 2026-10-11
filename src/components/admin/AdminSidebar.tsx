@@ -45,28 +45,28 @@ export function AdminSidebar({
 }: AdminSidebarProps) {
   const menuItems: { id: AdminTab; label: string; icon: typeof LayoutDashboard; badge?: string }[] = [
     { id: 'overview', label: 'Главный дашборд', icon: LayoutDashboard },
-    { id: 'bot_control', label: 'Управление ботом', icon: Bot, badge: 'Online' },
-    { id: 'database', label: 'База данных & Таблицы', icon: Database },
-    { id: 'business_crm', label: 'Бизнес & CRM клиентов', icon: TrendingUp },
     {
       id: 'companies',
-      label: 'Реестр компаний',
+      label: 'Боты компаний (Конструктор)',
       icon: Building2,
       badge: companiesCount !== undefined ? `${companiesCount}` : undefined,
     },
+    {
+      id: 'settings',
+      label: 'Услуги, цены & сметы',
+      icon: SlidersHorizontal,
+      badge: 'ГОСТ',
+    },
     { id: 'leads', label: 'Живая лента заявок', icon: Users, badge: 'Live' },
+    { id: 'bot_control', label: 'Управление ботом', icon: Bot, badge: 'Online' },
+    { id: 'database', label: 'База данных & Таблицы', icon: Database },
+    { id: 'business_crm', label: 'Бизнес & CRM клиентов', icon: TrendingUp },
     { id: 'broadcast', label: 'Рассылка Telegram', icon: Send },
     {
       id: 'monitoring',
       label: 'Мониторинг & Серверы',
       icon: Activity,
       badge: pendingIssuesCount > 0 ? `${pendingIssuesCount}` : undefined,
-    },
-    {
-      id: 'settings',
-      label: 'Управление ценами & тарифами',
-      icon: SlidersHorizontal,
-      badge: '3 тарифа',
     },
   ];
 
@@ -94,10 +94,10 @@ export function AdminSidebar({
             <div>
               <div className="flex items-center gap-1.5">
                 <span className="text-sm font-bold text-zinc-950 dark:text-white leading-tight">
-                  RemontSaaS
+                  RemontBot
                 </span>
-                <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 border border-zinc-300 dark:border-zinc-700">
-                  PRO
+                <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                  Владелец
                 </span>
               </div>
               <p className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium leading-tight">

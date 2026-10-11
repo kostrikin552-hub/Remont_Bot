@@ -299,7 +299,7 @@ async def cmd_start(message: Message, command: CommandObject, bot: Bot):
         share_greeting = (
             f"Здравствуйте, {message.from_user.first_name}!\n\n"
             f"👨‍👩‍👧 <b>Вам отправлена интерактивная смета ремонта на согласование:</b>\n"
-            f"📐 Площадь: <b>{shared_area} м²</b> (тариф «{t_name}»)\n"
+            f"📐 Площадь: <b>{shared_area} м²</b> (пакет «{t_name}»)\n"
             "⚡️ Все расценки рассчитаны по стандарту ГОСТ с поэтапной оплатой без предоплаты.\n\n"
             "Нажмите кнопку ниже, чтобы открыть живую интерактивную смету и посмотреть детализацию работ:"
         )
@@ -741,7 +741,7 @@ async def handle_webapp_data(message: Message, bot: Bot):
                 f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
                 f"📍 <b>Город:</b> {city}\n"
                 f"📐 <b>Объект:</b> {area} м² ({prop_type}) — <i>дом ещё строится</i>\n"
-                f"🏷 <b>Выбранный тариф:</b> {tariff}\n"
+                f"🏷 <b>Пакет отделки:</b> {tariff}\n"
                 f"💰 <b>Диапазон сметы:</b> {price_min:,.0f} — {price_max:,.0f} ₽\n"
                 f"📅 <b>Формат:</b> Онлайн-разбор планировки\n"
                 f"💬 <b>Канал связи:</b> {comm_channel}\n\n"
@@ -759,7 +759,7 @@ async def handle_webapp_data(message: Message, bot: Bot):
                 f"📞 <b>Телефон:</b> <code>{phone}</code>\n"
                 f"📍 <b>Город:</b> {city}\n"
                 f"📐 <b>Объект:</b> {area} м² ({prop_type})\n"
-                f"🏷 <b>Выбранный тариф:</b> {tariff}\n"
+                f"🏷 <b>Пакет отделки:</b> {tariff}\n"
                 f"💰 <b>Диапазон сметы:</b> {price_min:,.0f} — {price_max:,.0f} ₽\n"
                 f"📅 <b>Желаемая дата выезда:</b> {date_visit}\n"
                 f"💬 <b>Канал связи:</b> {comm_channel}\n\n"

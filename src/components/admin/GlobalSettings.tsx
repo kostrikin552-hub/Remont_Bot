@@ -1,637 +1,841 @@
-import { useState } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import {
-  Check,
-  CreditCard,
-  Edit2,
+  Search,
+  Plus,
   Save,
-  ShieldCheck,
-  Send,
+  RotateCcw,
+  Trash2,
+  Edit2,
+  Check,
+  Building2,
+  SlidersHorizontal,
+  Bot,
   Sparkles,
-  Zap,
   Layers,
-  Clock,
-  Coins,
+  Shield,
+  HelpCircle,
   Copy,
-  ExternalLink,
+  FolderOpen,
 } from 'lucide-react';
-import { GostPriceCatalogItem } from '../../types/admin';
-import { GOST_PRICE_CATALOG } from '../../data/mockAdminData';
+import { TenantCompany } from '../../types/admin';
+import { EstimateItem, EstimateCategoryType, PricingRules, RenovationClassId } from '../../types';
+import {
+  DEFAULT_ESTIMATE_CATALOG,
+  getCompanyEstimateItems,
+  saveCompanyEstimateItems,
+} from '../../utils/estimates';
+import { DEMO_COMPANIES, DEFAULT_COMPANY_ID } from '../../lib/supabase';
+import { triggerHaptic } from '../../utils/telegram';
+import { SUPERADMIN_TELEGRAM_ID } from '../../utils/auth';
 
-export interface SubscriptionPlanConfig {
-  id: '1m' | '3m' | '1y';
-  name: string;
-  durationDays: number;
-  price: number;
-  label: string;
-  badge: string;
-  badgeColor: string;
-  description: string;
-  discountText: string;
-  economy: string;
-  monthlyEquiv: number;
+interface GlobalSettingsProps {
+  companies?: TenantCompany[];
+  selectedCompanyId?: string;
+  onUpdateCompany?: (updated: TenantCompany) => void;
+  onShowToast?: (msg: string) => void;
 }
 
-export function GlobalSettings() {
-  const [catalog, setCatalog] = useState<GostPriceCatalogItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('remontsaas_real_gost_prices');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return GOST_PRICE_CATALOG;
-  });
-  const [editingId, setEditingId] = useState<string | null>(null);
-  const [editPrice, setEditPrice] = useState<number>(0);
+const CATEGORY_LABELS: Record<EstimateCategoryType, { title: string; icon: string }> = {
+  demolition: { title: 'Демонтаж и подготовка', icon: '🔨' },
+  rough: { title: 'Черновые работы и геометрия', icon: '🧱' },
+  engineering: { title: 'Инженерные сети (электрика/сантехника)', icon: '⚡' },
+  finishing: { title: 'Чистовая отделка', icon: '🎨' },
+  materials: { title: 'Черновые строительные материалы', icon: '📦' },
+};
 
-  // 1. НАСТОЯЩИЕ БОЕВЫЕ ПЕРЕМЕННЫЕ ЭКВАЙРИНГА
-  const [telegramPaymentToken, setTelegramPaymentToken] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('remontsaas_tg_payment_token');
-      if (saved) return saved;
-    } catch {}
-    return '390540012:LIVE:102909';
-  });
-
-  const [yookassaShopId, setYookassaShopId] = useState<string>(() => {
-    try {
-      const saved = localStorage.getItem('remontsaas_yookassa_shop_id');
-      if (saved) return saved;
-    } catch {}
-    return '1413258';
+export function GlobalSettings({
+  companies = [],
+  selectedCompanyId: propSelectedCompanyId,
+  onUpdateCompany,
+  onShowToast,
+}: GlobalSettingsProps) {
+  // Current active company for editing prices (or 'default' for base template)
+  const [activeCompanyId, setActiveCompanyId] = useState<string>(() => {
+    return propSelectedCompanyId || (companies.length > 0 ? companies[0].id : DEFAULT_COMPANY_ID);
   });
 
-  const [isTestPaymentMode, setIsTestPaymentMode] = useState<boolean>(() => {
-    try {
-      const saved = localStorage.getItem('remontsaas_test_payment_mode');
-      if (saved) return saved === 'true';
-    } catch {}
-    return false;
-  });
+  useEffect(() => {
+    if (propSelectedCompanyId) {
+      setActiveCompanyId(propSelectedCompanyId);
+    }
+  }, [propSelectedCompanyId]);
 
-  const [trialLeadsCount, setTrialLeadsCount] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('remontsaas_trial_leads_count');
-      if (saved) return Number(saved);
-    } catch {}
-    return 3;
-  });
-
-  // 2. ТРИ ОФИЦИАЛЬНЫХ ТАРИФА ПОДПИСКИ (1m, 3m, 1y)
-  const [plans, setPlans] = useState<Record<'1m' | '3m' | '1y', SubscriptionPlanConfig>>(() => {
-    const defaultPlans: Record<'1m' | '3m' | '1y', SubscriptionPlanConfig> = {
-      '1m': {
-        id: '1m',
-        name: '1 месяц',
-        durationDays: 30,
-        price: 2990,
-        label: '1 месяц — 2 990 ₽',
-        badge: 'Базовый',
-        badgeColor: 'bg-zinc-100 text-zinc-800 dark:bg-zinc-800 dark:text-zinc-200',
-        description: '30 дней безлимитной работы бота и приёма заявок заказчиков',
-        discountText: 'Базовый тариф',
-        economy: '0 ₽',
-        monthlyEquiv: 2990,
-      },
-      '3m': {
-        id: '3m',
-        name: '3 месяца',
-        durationDays: 90,
-        price: 6990,
-        label: '3 месяца — 6 990 ₽',
-        badge: 'Популярный 🔥',
-        badgeColor: 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300',
-        description: '90 дней работы бота без перебоев (выгода 22%, экономия 1 980 ₽)',
-        discountText: 'Скидка 22%',
-        economy: '1 980 ₽',
-        monthlyEquiv: 2330,
-      },
-      '1y': {
-        id: '1y',
-        name: '1 год',
-        durationDays: 365,
-        price: 22990,
-        label: '1 год — 22 990 ₽',
-        badge: 'Максимальная выгода ⭐️',
-        badgeColor: 'bg-emerald-100 text-emerald-900 dark:bg-emerald-950/60 dark:text-emerald-300',
-        description: '365 дней работы бота (всего ~1 915 ₽/мес, экономия 12 890 ₽)',
-        discountText: 'Экономия 12 890 ₽',
-        economy: '12 890 ₽',
-        monthlyEquiv: 1915,
-      },
+  // Pricing rules state for the active company
+  const [pricing, setPricing] = useState<PricingRules>(() => {
+    const fallback = DEMO_COMPANIES[DEFAULT_COMPANY_ID]?.pricing || {
+      cosmeticPrice: 4500,
+      capitalPrice: 8500,
+      designerPrice: 15000,
+      materialsPrice: 3500,
+      demolitionPrice: 1200,
+      designProjectPrice: 2000,
     };
 
-    try {
-      const saved = localStorage.getItem('remontsaas_real_tariffs');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (parsed['1m'] && parsed['3m'] && parsed['1y']) {
-          return parsed;
-        }
-      }
-    } catch {}
-    return defaultPlans;
+    if (typeof window !== 'undefined') {
+      try {
+        const stored = localStorage.getItem(`company_pricing_${activeCompanyId}`);
+        if (stored) return JSON.parse(stored);
+      } catch {}
+    }
+    return fallback;
   });
 
-  const [copiedKey, setCopiedKey] = useState<string | null>(null);
-  const [isSavedNotice, setIsSavedNotice] = useState<boolean>(false);
+  // Estimate items catalog for the active company
+  const [items, setItems] = useState<EstimateItem[]>(() => {
+    return getCompanyEstimateItems(activeCompanyId, pricing);
+  });
 
-  const handleStartEdit = (item: GostPriceCatalogItem) => {
-    setEditingId(item.id);
-    setEditPrice(item.baseCost);
-  };
+  // Reload pricing and estimate items when active company changes
+  useEffect(() => {
+    const fallback = DEMO_COMPANIES[activeCompanyId]?.pricing || DEMO_COMPANIES[DEFAULT_COMPANY_ID]?.pricing || {
+      cosmeticPrice: 4500,
+      capitalPrice: 8500,
+      designerPrice: 15000,
+      materialsPrice: 3500,
+      demolitionPrice: 1200,
+      designProjectPrice: 2000,
+    };
 
-  const handleSavePrice = (id: string) => {
-    setCatalog((prev) => {
-      const updated = prev.map((item) => (item.id === id ? { ...item, baseCost: editPrice } : item));
+    let resolvedPricing = fallback;
+    if (typeof window !== 'undefined') {
       try {
-        localStorage.setItem('remontsaas_real_gost_prices', JSON.stringify(updated));
+        const stored = localStorage.getItem(`company_pricing_${activeCompanyId}`);
+        if (stored) {
+          resolvedPricing = JSON.parse(stored);
+        }
       } catch {}
-      return updated;
+    }
+
+    setPricing(resolvedPricing);
+    setItems(getCompanyEstimateItems(activeCompanyId, resolvedPricing));
+  }, [activeCompanyId]);
+
+  // Secondary Coefficient (Вторичка)
+  const [secondaryCoeff, setSecondaryCoeff] = useState<number>(() => {
+    const match = companies.find((c) => c.id === activeCompanyId);
+    return match?.pricingMultiplier || 1.15;
+  });
+
+  // Search & Filter in items
+  const [searchQuery, setSearchQuery] = useState('');
+  const [filterCategory, setFilterCategory] = useState<string>('all');
+
+  // New Service Modal
+  const [isAddServiceOpen, setIsAddServiceOpen] = useState(false);
+  const [newTitle, setNewTitle] = useState('');
+  const [newCategory, setNewCategory] = useState<EstimateCategoryType>('rough');
+  const [newUnit, setNewUnit] = useState('м²');
+  const [newPrice, setNewPrice] = useState(500);
+  const [newRatio, setNewRatio] = useState(1.0);
+  const [newDesc, setNewDesc] = useState('');
+
+  // Editing existing service
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
+  const [editPriceVal, setEditPriceVal] = useState<number>(0);
+  const [editTitleVal, setEditTitleVal] = useState<string>('');
+  const [editUnitVal, setEditUnitVal] = useState<string>('м²');
+  const [editRatioVal, setEditRatioVal] = useState<number>(1.0);
+
+  const [savedNotice, setSavedNotice] = useState(false);
+
+  const activeCompany = companies.find((c) => c.id === activeCompanyId);
+
+  const filteredItems = useMemo(() => {
+    return items.filter((item) => {
+      const matchSearch =
+        item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase()));
+      const matchCat = filterCategory === 'all' || item.category === filterCategory;
+      return matchSearch && matchCat;
     });
-    setEditingId(null);
-    showNotice();
+  }, [items, searchQuery, filterCategory]);
+
+  const handleSaveAll = () => {
+    triggerHaptic('heavy');
+
+    // 1. Save pricing rules
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(`company_pricing_${activeCompanyId}`, JSON.stringify(pricing));
+      } catch (e) {
+        console.error('Error saving pricing rules:', e);
+      }
+    }
+
+    // 2. Save items catalog
+    saveCompanyEstimateItems(activeCompanyId, items);
+
+    // 3. Update company in state if applicable
+    if (activeCompany && onUpdateCompany) {
+      onUpdateCompany({
+        ...activeCompany,
+        pricingMultiplier: secondaryCoeff,
+      });
+    }
+
+    setSavedNotice(true);
+    if (onShowToast) {
+      onShowToast(`Расценки и услуги для бота «${activeCompany?.name || 'Шаблон'}» успешно сохранены!`);
+    }
+    setTimeout(() => setSavedNotice(false), 3000);
   };
 
-  const showNotice = () => {
-    setIsSavedNotice(true);
-    setTimeout(() => setIsSavedNotice(false), 3000);
-  };
-
-  const handleUpdatePlanPrice = (planId: '1m' | '3m' | '1y', newPrice: number) => {
-    setPlans((prev) => {
-      const target = prev[planId];
-      const months = planId === '1m' ? 1 : planId === '3m' ? 3 : 12;
-      const updated: SubscriptionPlanConfig = {
-        ...target,
-        price: newPrice,
-        monthlyEquiv: Math.round(newPrice / months),
-        label: `${target.name} — ${newPrice.toLocaleString('ru-RU')} ₽`,
+  const handleResetToGost = () => {
+    if (
+      window.confirm(
+        'Сбросить все расценки и услуги данного бота к базовому технологическому каталогу ГОСТ?'
+      )
+    ) {
+      const basePricing: PricingRules = {
+        cosmeticPrice: 4500,
+        capitalPrice: 8500,
+        designerPrice: 15000,
+        materialsPrice: 3500,
+        demolitionPrice: 1200,
+        designProjectPrice: 2000,
       };
-      return { ...prev, [planId]: updated };
-    });
+      setPricing(basePricing);
+      const resetItems = DEFAULT_ESTIMATE_CATALOG.map((i) => ({ ...i }));
+      setItems(resetItems);
+      saveCompanyEstimateItems(activeCompanyId, resetItems);
+      if (typeof window !== 'undefined') {
+        localStorage.setItem(`company_pricing_${activeCompanyId}`, JSON.stringify(basePricing));
+      }
+      if (onShowToast) {
+        onShowToast('Расценки сброшены к стандарту ГОСТ!');
+      }
+    }
   };
 
-  const handleSaveAllSettings = () => {
-    try {
-      localStorage.setItem('remontsaas_tg_payment_token', telegramPaymentToken);
-      localStorage.setItem('remontsaas_yookassa_shop_id', yookassaShopId);
-      localStorage.setItem('remontsaas_test_payment_mode', String(isTestPaymentMode));
-      localStorage.setItem('remontsaas_trial_leads_count', String(trialLeadsCount));
-      localStorage.setItem('remontsaas_real_tariffs', JSON.stringify(plans));
-    } catch {}
-    showNotice();
+  const handleStartEditItem = (item: EstimateItem) => {
+    setEditingItemId(item.id);
+    setEditPriceVal(item.unitPrice);
+    setEditTitleVal(item.title);
+    setEditUnitVal(item.unit);
+    setEditRatioVal(item.quantityRatio);
   };
 
-  const copyToClipboard = (text: string, keyName: string) => {
-    if (navigator.clipboard) {
-      navigator.clipboard.writeText(text);
-      setCopiedKey(keyName);
-      setTimeout(() => setCopiedKey(null), 2000);
+  const handleSaveItemEdit = (id: string) => {
+    setItems((prev) =>
+      prev.map((i) =>
+        i.id === id
+          ? {
+              ...i,
+              unitPrice: Number(editPriceVal) || i.unitPrice,
+              title: editTitleVal.trim() || i.title,
+              unit: editUnitVal.trim() || i.unit,
+              quantityRatio: Number(editRatioVal) || i.quantityRatio,
+            }
+          : i
+      )
+    );
+    setEditingItemId(null);
+  };
+
+  const handleDeleteItem = (id: string) => {
+    setItems((prev) => prev.filter((i) => i.id !== id));
+  };
+
+  const handleCreateNewService = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newTitle.trim()) return;
+
+    const newItem: EstimateItem = {
+      id: `custom-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      category: newCategory,
+      title: newTitle.trim(),
+      unit: newUnit.trim() || 'м²',
+      quantityRatio: Number(newRatio) || 1.0,
+      unitPrice: Number(newPrice) || 500,
+      tariffApplicability: ['cosmetic', 'capital', 'designer'],
+      description: newDesc.trim() || 'Индивидуальная позиция сметы компании',
+    };
+
+    setItems((prev) => [newItem, ...prev]);
+    setIsAddServiceOpen(false);
+    setNewTitle('');
+    setNewDesc('');
+    setNewPrice(500);
+    setNewRatio(1.0);
+    if (onShowToast) {
+      onShowToast(`Услуга «${newItem.title}» добавлена в смету! Не забудьте сохранить.`);
     }
   };
 
   return (
     <div className="space-y-4">
-      {/* Top Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-        <div>
-          <h1 className="text-base font-bold text-zinc-950 dark:text-white uppercase tracking-wider flex items-center gap-2">
-            <span>Управление ценами, тарифами & эквайрингом</span>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold normal-case">
-              3 тарифа активны
-            </span>
-          </h1>
-          <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Конфигурация платных тарифов подписки Telegram-бота, боевые платежные токены и ГОСТ-каталог расценок.
-          </p>
-        </div>
-
-        <button
-          type="button"
-          onClick={handleSaveAllSettings}
-          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
-        >
-          <Save className="w-4 h-4" />
-          <span>Сохранить все тарифы</span>
-        </button>
-      </div>
-
-      {isSavedNotice && (
-        <div className="p-3 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 shadow-xs">
-          <Check className="w-4 h-4" />
-          <span>Настройки тарифов и платежные ключи успешно сохранены и синхронизированы!</span>
-        </div>
-      )}
-
-      {/* ------------------------------------------------------------------ */}
-      {/* 1. БОЕВЫЕ ПЕРЕМЕННЫЕ ПЛАТЕЖНЫХ ШЛЮЗОВ (TELEGRAM & YOOKASSA) */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-4">
-        <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800">
-          <div className="flex items-center gap-2">
-            <CreditCard className="w-4 h-4 text-emerald-600" />
-            <h2 className="text-xs font-bold text-zinc-950 dark:text-white uppercase tracking-wider">
-              Боевые платежные шлюзы и переменные окружения
-            </h2>
-          </div>
-          <div className="flex items-center gap-2">
-            <span
-              className={`text-[10px] font-extrabold px-2 py-0.5 rounded-sm uppercase ${
-                isTestPaymentMode
-                  ? 'bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300'
-                  : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/60 dark:text-emerald-300'
-              }`}
-            >
-              {isTestPaymentMode ? 'ТЕСТОВЫЙ РЕЖИМ' : 'БОЕВОЙ РЕЖИМ (LIVE)'}
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {/* TELEGRAM_PAYMENT_PROVIDER_TOKEN */}
-          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
-                <Send className="w-3.5 h-3.5 text-blue-500" />
-                TELEGRAM_PAYMENT_PROVIDER_TOKEN
-              </span>
-              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300">
-                Telegram Payments API
-              </span>
+      {/* Top Header & Save Control */}
+      <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 border border-emerald-500/20">
+              <SlidersHorizontal className="w-5 h-5" />
             </div>
-            <p className="text-[10px] text-zinc-500 leading-tight">
-              Токен платежного провайдера (Сбербанк/ЮKassa) для нативной оплаты через инвойсы в Telegram-боте.
-            </p>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                value={telegramPaymentToken}
-                onChange={(e) => setTelegramPaymentToken(e.target.value)}
-                className="flex-1 px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-md text-xs font-mono font-bold text-zinc-950 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-              <button
-                type="button"
-                onClick={() => copyToClipboard(telegramPaymentToken, 'tg_token')}
-                className="p-2 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 rounded-md text-zinc-700 dark:text-zinc-200 transition cursor-pointer"
-                title="Скопировать токен"
-              >
-                {copiedKey === 'tg_token' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Подключено: <code>390540012:LIVE:102909</code>
-            </div>
-          </div>
-
-          {/* YOOKASSA_SHOP_ID */}
-          <div className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200 dark:border-zinc-700/80 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-[11px] font-bold text-zinc-900 dark:text-white flex items-center gap-1.5">
-                <CreditCard className="w-3.5 h-3.5 text-purple-500" />
-                YOOKASSA_SHOP_ID
-              </span>
-              <span className="text-[9px] font-mono font-bold px-1.5 py-0.2 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300">
-                СБП / Карты РФ
-              </span>
-            </div>
-            <p className="text-[10px] text-zinc-500 leading-tight">
-              Идентификатор магазина ЮKassa для формирования веб-страниц оплаты и автоматического выставления чеков.
-            </p>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="text"
-                value={yookassaShopId}
-                onChange={(e) => setYookassaShopId(e.target.value)}
-                className="flex-1 px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded-md text-xs font-mono font-bold text-zinc-950 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-              />
-              <button
-                type="button"
-                onClick={() => copyToClipboard(yookassaShopId, 'shop_id')}
-                className="p-2 bg-zinc-200 hover:bg-zinc-300 dark:bg-zinc-700 dark:hover:bg-zinc-600 rounded-md text-zinc-700 dark:text-zinc-200 transition cursor-pointer"
-                title="Скопировать ShopId"
-              >
-                {copiedKey === 'shop_id' ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-              </button>
-            </div>
-            <div className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
-              Подключено: <code>1413258</code>
-            </div>
-          </div>
-        </div>
-
-        {/* Дополнительные параметры (Режим & Стартовый триал) */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
-          <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
             <div>
-              <div className="text-xs font-bold text-zinc-900 dark:text-white">
-                Режим платежей
+              <div className="flex items-center gap-2 flex-wrap">
+                <h2 className="text-base font-bold text-zinc-950 dark:text-white">
+                  Управление услугами, расценками & ГОСТ-сметами
+                </h2>
+                <span className="px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold">
+                  Ручной редактор
+                </span>
               </div>
-              <div className="text-[10px] text-zinc-500">
-                {isTestPaymentMode ? 'Тестовые карты без списания' : 'Боевой режим со списанием средств'}
-              </div>
+              <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-1">
+                Полный контроль над ценами за м², пакетами отделки и любой строкой официальной сметы для конкретного бота.
+              </p>
             </div>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
             <button
-              type="button"
-              onClick={() => {
-                setIsTestPaymentMode(!isTestPaymentMode);
-                showNotice();
-              }}
-              className={`relative inline-flex h-5 w-10 items-center rounded-full transition-colors cursor-pointer ${
-                !isTestPaymentMode ? 'bg-zinc-900 dark:bg-white' : 'bg-zinc-300 dark:bg-zinc-700'
-              }`}
+              onClick={handleResetToGost}
+              className="px-3 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold text-xs transition flex items-center gap-1.5"
             >
-              <span
-                className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white dark:bg-zinc-900 transition-transform ${
-                  !isTestPaymentMode ? 'translate-x-5' : 'translate-x-1'
-                }`}
-              />
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>Сбросить к ГОСТ</span>
+            </button>
+            <button
+              onClick={handleSaveAll}
+              className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+            >
+              <Save className="w-4 h-4" />
+              <span>Сохранить все расценки</span>
             </button>
           </div>
+        </div>
 
-          <div className="flex items-center justify-between p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700">
-            <div>
-              <div className="text-xs font-bold text-zinc-900 dark:text-white">
-                Стартовый триал (Freemium)
-              </div>
-              <div className="text-[10px] text-zinc-500">
-                Заявок с открытыми контактами до пейволла
-              </div>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <input
-                type="number"
-                min="1"
-                max="20"
-                value={trialLeadsCount}
-                onChange={(e) => setTrialLeadsCount(Number(e.target.value))}
-                className="w-14 px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded text-xs font-bold text-center"
-              />
-              <span className="text-xs font-semibold text-zinc-500">заявки</span>
-            </div>
+        {savedNotice && (
+          <div className="mt-3 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 text-xs font-bold flex items-center gap-2 animate-in fade-in">
+            <Check className="w-4 h-4 text-emerald-600" />
+            <span>Все услуги и цены успешно сохранены и привязаны к боту!</span>
+          </div>
+        )}
+
+        {/* Bot / Company Selector Bar */}
+        <div className="mt-4 pt-3 border-t border-zinc-100 dark:border-zinc-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-bold text-zinc-700 dark:text-zinc-300">
+              Выбранный бот:
+            </span>
+            <select
+              value={activeCompanyId}
+              onChange={(e) => setActiveCompanyId(e.target.value)}
+              className="px-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-bold text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500"
+            >
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name} ({c.city}) — @{c.botUsername}
+                </option>
+              ))}
+              <option value="remont-pro">РемонтПро (Базовый шаблон)</option>
+            </select>
+          </div>
+
+          <div className="text-[11px] text-zinc-500 font-medium flex items-center gap-1">
+            <Bot className="w-3.5 h-3.5 text-emerald-500" />
+            <span>
+              Редактируются эксклюзивные цены для бота компании{' '}
+              <strong className="text-zinc-900 dark:text-white">
+                {activeCompany?.name || 'РемонтПро'}
+              </strong>
+            </span>
           </div>
         </div>
       </div>
 
-      {/* ------------------------------------------------------------------ */}
-      {/* 2. ТРИ ОФИЦИАЛЬНЫХ ТАРИФА ПОДПИСКИ СЕРВИСА (1m, 3m, 1y) */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="space-y-3">
+      {/* Block 1: Base Packages & Main Works (₽/м²) */}
+      <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-3">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Layers className="w-4 h-4 text-emerald-600" />
-            <h2 className="text-xs font-bold text-zinc-950 dark:text-white uppercase tracking-wider">
-              3 Официальных тарифа сервиса (1 месяц, 3 месяца, 1 год)
-            </h2>
+            <span className="text-base">🏷</span>
+            <h3 className="font-bold text-sm text-zinc-950 dark:text-white">
+              Базовые пакеты отделки под ключ (₽ за м² площади пола)
+            </h3>
           </div>
-          <span className="text-[11px] text-zinc-500">
-            Команда для прораба в боте: <code>/pay</code> или <code>/subscription</code>
+          <span className="text-[10px] text-zinc-400 font-medium">
+            Обновляется в реальном времени
           </span>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          {(['1m', '3m', '1y'] as const).map((planId) => {
-            const plan = plans[planId];
-            return (
-              <div
-                key={planId}
-                className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-xs flex flex-col justify-between space-y-3 relative overflow-hidden"
-              >
-                {/* Top Badge */}
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300">
-                    ID: {plan.id}
-                  </span>
-                  <span className={`text-[10px] font-extrabold px-2 py-0.5 rounded-full ${plan.badgeColor}`}>
-                    {plan.badge}
-                  </span>
-                </div>
-
-                <div>
-                  <h3 className="text-base font-extrabold text-zinc-950 dark:text-white">
-                    {plan.name}
-                  </h3>
-                  <div className="text-[11px] text-zinc-500 mt-0.5 flex items-center gap-1">
-                    <Clock className="w-3.5 h-3.5 text-zinc-400" />
-                    <span>Срок действия: <b>{plan.durationDays} дней</b></span>
-                  </div>
-                </div>
-
-                {/* Price editor */}
-                <div className="p-2.5 rounded-lg bg-zinc-50 dark:bg-zinc-800/80 border border-zinc-200 dark:border-zinc-700/80 space-y-1">
-                  <span className="text-[10px] font-bold text-zinc-500 uppercase block">
-                    Стоимость тарифа (₽):
-                  </span>
-                  <div className="flex items-center gap-1.5">
-                    <input
-                      type="number"
-                      step="10"
-                      value={plan.price}
-                      onChange={(e) => handleUpdatePlanPrice(planId, Number(e.target.value))}
-                      className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-300 dark:border-zinc-700 rounded text-sm font-extrabold text-zinc-950 dark:text-white focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                    <span className="text-sm font-extrabold text-zinc-900 dark:text-white">₽</span>
-                  </div>
-                  <div className="flex items-center justify-between text-[10px] text-zinc-500 pt-0.5">
-                    <span>В месяц: ~<b>{plan.monthlyEquiv.toLocaleString('ru-RU')} ₽</b></span>
-                    {plan.economy !== '0 ₽' && (
-                      <span className="text-emerald-600 dark:text-emerald-400 font-bold">
-                        Экономия {plan.economy}
-                      </span>
-                    )}
-                  </div>
-                </div>
-
-                {/* Description */}
-                <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
-                  {plan.description}
-                </p>
-
-                {/* Telegram Bot Command & Gateway Binding */}
-                <div className="p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-700/80 text-[10px] space-y-1.5">
-                  <div className="text-[9px] font-bold text-zinc-500 uppercase tracking-wider flex items-center justify-between">
-                    <span>Боевой эквайринг тарифа</span>
-                    <span className="text-emerald-600 font-bold">LIVE</span>
-                  </div>
-                  <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-300 font-mono text-[9px]">
-                    <span className="text-zinc-400">TG Provider:</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400 truncate max-w-[140px]" title={telegramPaymentToken}>
-                      {telegramPaymentToken}
-                    </span>
-                  </div>
-                  <div className="flex items-center justify-between text-zinc-600 dark:text-zinc-300 font-mono text-[9px]">
-                    <span className="text-zinc-400">Shop ID:</span>
-                    <span className="font-bold text-purple-600 dark:text-purple-400">
-                      {yookassaShopId}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Telegram Bot Command Preview */}
-                <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-center justify-between text-[11px]">
-                  <span className="text-zinc-500 font-mono text-[10px]">Команда:</span>
-                  <code className="px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-900 dark:text-zinc-100 font-bold text-[10px]">
-                    /pay {plan.id}
-                  </code>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* ------------------------------------------------------------------ */}
-      {/* 3. ЭТАЛОННЫЙ ГОСТ-КАТАЛОГ РАСЦЕНОК ПО ВИДАМ РАБОТ */}
-      {/* ------------------------------------------------------------------ */}
-      <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-3">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
-          <div>
-            <div className="flex items-center gap-2">
-              <Coins className="w-4 h-4 text-emerald-600" />
-              <h2 className="text-xs font-bold text-zinc-950 dark:text-white uppercase tracking-wider">
-                Эталонный ГОСТ-каталог расценок за м² и единицу
-              </h2>
-              <span className="text-[9px] font-extrabold px-1.5 py-0.5 rounded-sm bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200">
-                СНиП / СП 71.13330
+          {/* Cosmetic */}
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                Косметический ремонт
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold">
+                Эконом
               </span>
             </div>
-            <p className="text-[11px] text-zinc-500 dark:text-zinc-400 mt-0.5">
-              Инициализирует базовые цены калькулятора при регистрации нового прораба в Telegram-боте.
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="number"
+                value={pricing.cosmeticPrice}
+                onChange={(e) =>
+                  setPricing({ ...pricing, cosmeticPrice: Number(e.target.value) || 0 })
+                }
+                className="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-black text-zinc-950 dark:text-white focus:outline-none"
+              />
+              <span className="text-xs text-zinc-400 font-bold shrink-0">₽/м²</span>
+            </div>
+            <p className="text-[10px] text-zinc-500 mt-1.5 leading-snug">
+              Обновление финишных покрытий без переноса стен и сантехники.
+            </p>
+          </div>
+
+          {/* Capital */}
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                Капитальный ремонт
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 font-bold">
+                Хит продаж
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="number"
+                value={pricing.capitalPrice}
+                onChange={(e) =>
+                  setPricing({ ...pricing, capitalPrice: Number(e.target.value) || 0 })
+                }
+                className="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-black text-zinc-950 dark:text-white focus:outline-none"
+              />
+              <span className="text-xs text-zinc-400 font-bold shrink-0">₽/м²</span>
+            </div>
+            <p className="text-[10px] text-zinc-500 mt-1.5 leading-snug">
+              Выравнивание стен по маякам 90°, новая электрика и сантехразводка под ключ.
+            </p>
+          </div>
+
+          {/* Designer */}
+          <div className="p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80">
+            <div className="flex items-center justify-between mb-1.5">
+              <span className="text-xs font-bold text-zinc-900 dark:text-white">
+                Дизайнерский ремонт
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950/60 text-purple-800 dark:text-purple-300 font-bold">
+                Премиум
+              </span>
+            </div>
+            <div className="flex items-center gap-2 mt-2">
+              <input
+                type="number"
+                value={pricing.designerPrice}
+                onChange={(e) =>
+                  setPricing({ ...pricing, designerPrice: Number(e.target.value) || 0 })
+                }
+                className="w-full px-2.5 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded-lg text-sm font-black text-zinc-950 dark:text-white focus:outline-none"
+              />
+              <span className="text-xs text-zinc-400 font-bold shrink-0">₽/м²</span>
+            </div>
+            <p className="text-[10px] text-zinc-500 mt-1.5 leading-snug">
+              Сложные инженерные узлы, теневые плинтусы, крупноформатный керамогранит.
             </p>
           </div>
         </div>
 
-        {/* Mobile Compact Cards for GOST items (< md) */}
-        <div className="md:hidden space-y-2">
-          {catalog.map((item) => {
-            const isEditing = editingId === item.id;
-            return (
-              <div
-                key={item.id}
-                className="p-3 rounded-lg bg-zinc-50 dark:bg-zinc-800/60 border border-zinc-200/80 dark:border-zinc-800 space-y-1.5"
-              >
-                <div className="flex items-start justify-between gap-2">
-                  <div>
-                    <div className="text-xs font-bold text-zinc-950 dark:text-white leading-snug">
-                      {item.name}
-                    </div>
-                    <div className="text-[10px] text-zinc-500 flex items-center gap-1.5 mt-0.5">
-                      <span className="font-semibold">{item.category}</span>
-                      <span>•</span>
-                      <span className="font-mono text-zinc-600 dark:text-zinc-400">{item.gostCode}</span>
-                    </div>
-                  </div>
+        {/* Additional Works Rates */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-800">
+          <div className="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg">
+            <span className="text-[10px] text-zinc-500 block">Черновые материалы:</span>
+            <div className="flex items-center gap-1 mt-1">
+              <input
+                type="number"
+                value={pricing.materialsPrice}
+                onChange={(e) =>
+                  setPricing({ ...pricing, materialsPrice: Number(e.target.value) || 0 })
+                }
+                className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+              />
+              <span className="text-[10px] text-zinc-400">₽/м²</span>
+            </div>
+          </div>
 
-                  <div className="shrink-0 text-right">
-                    {isEditing ? (
-                      <div className="flex items-center gap-1">
-                        <input
-                          type="number"
-                          autoFocus
-                          value={editPrice}
-                          onChange={(e) => setEditPrice(Number(e.target.value))}
-                          className="w-16 px-1.5 py-0.5 bg-white dark:bg-zinc-900 border border-zinc-900 dark:border-white rounded text-xs font-bold"
-                        />
-                        <button
-                          onClick={() => handleSavePrice(item.id)}
-                          className="p-1 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 rounded cursor-pointer"
-                        >
-                          <Save className="w-3 h-3" />
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="flex items-center gap-1.5">
-                        <span className="text-xs font-extrabold text-zinc-950 dark:text-white whitespace-nowrap">
-                          {item.baseCost.toLocaleString('ru-RU')} ₽ <span className="text-[10px] font-normal text-zinc-500">/{item.unit}</span>
-                        </span>
-                        <button
-                          onClick={() => handleStartEdit(item)}
-                          className="p-1 bg-zinc-200 dark:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded cursor-pointer"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
+          <div className="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg">
+            <span className="text-[10px] text-zinc-500 block">Демонтажные работы:</span>
+            <div className="flex items-center gap-1 mt-1">
+              <input
+                type="number"
+                value={pricing.demolitionPrice}
+                onChange={(e) =>
+                  setPricing({ ...pricing, demolitionPrice: Number(e.target.value) || 0 })
+                }
+                className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+              />
+              <span className="text-[10px] text-zinc-400">₽/м²</span>
+            </div>
+          </div>
 
-        {/* Desktop Table View */}
-        <div className="hidden md:block overflow-x-auto rounded-lg border border-zinc-200 dark:border-zinc-800">
-          <table className="w-full text-left text-xs">
-            <thead>
-              <tr className="bg-zinc-50 dark:bg-zinc-800/60 text-zinc-600 dark:text-zinc-400 border-b border-zinc-200 dark:border-zinc-800">
-                <th className="py-2 px-3 font-bold">Категория</th>
-                <th className="py-2 px-3 font-bold">Наименование работы</th>
-                <th className="py-2 px-3 font-bold">Норматив ГОСТ/СП</th>
-                <th className="py-2 px-3 font-bold">Ед. изм.</th>
-                <th className="py-2 px-3 font-bold">Базовая ставка (₽)</th>
-                <th className="py-2 px-3 text-right font-bold">Действие</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {catalog.map((item) => {
-                const isEditing = editingId === item.id;
+          <div className="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg">
+            <span className="text-[10px] text-zinc-500 block">Дизайн-проект интерьера:</span>
+            <div className="flex items-center gap-1 mt-1">
+              <input
+                type="number"
+                value={pricing.designProjectPrice}
+                onChange={(e) =>
+                  setPricing({ ...pricing, designProjectPrice: Number(e.target.value) || 0 })
+                }
+                className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+              />
+              <span className="text-[10px] text-zinc-400">₽/м²</span>
+            </div>
+          </div>
 
-                return (
-                  <tr key={item.id} className="hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors">
-                    <td className="py-2.5 px-3 text-zinc-500 font-medium whitespace-nowrap">
-                      {item.category}
-                    </td>
-                    <td className="py-2.5 px-3 text-zinc-950 dark:text-white font-medium max-w-[300px]">
-                      <div className="font-semibold">{item.name}</div>
-                      <div className="text-[10px] text-zinc-500">{item.description}</div>
-                    </td>
-                    <td className="py-2.5 px-3">
-                      <span className="px-1.5 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-mono text-[10px]">
-                        {item.gostCode}
-                      </span>
-                    </td>
-                    <td className="py-2.5 px-3 text-zinc-500">{item.unit}</td>
-                    <td className="py-2.5 px-3">
-                      {isEditing ? (
-                        <input
-                          type="number"
-                          autoFocus
-                          value={editPrice}
-                          onChange={(e) => setEditPrice(Number(e.target.value))}
-                          className="w-24 px-2 py-1 bg-zinc-50 dark:bg-zinc-800 border border-zinc-900 dark:border-white rounded text-xs font-bold text-zinc-950 dark:text-white focus:outline-none"
-                        />
-                      ) : (
-                        <span className="font-bold text-zinc-950 dark:text-white">
-                          {item.baseCost.toLocaleString('ru-RU')} ₽
-                        </span>
-                      )}
-                    </td>
-                    <td className="py-2.5 px-3 text-right">
-                      {isEditing ? (
-                        <button
-                          onClick={() => handleSavePrice(item.id)}
-                          className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-xs rounded transition flex items-center gap-1 ml-auto shadow-xs cursor-pointer"
-                        >
-                          <Save className="w-3 h-3" />
-                          <span>Сохранить</span>
-                        </button>
-                      ) : (
-                        <button
-                          onClick={() => handleStartEdit(item)}
-                          className="p-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 rounded transition ml-auto cursor-pointer"
-                          title="Редактировать базовую цену"
-                        >
-                          <Edit2 className="w-3 h-3" />
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+          <div className="p-2.5 bg-zinc-50 dark:bg-zinc-800/40 rounded-lg">
+            <span className="text-[10px] text-zinc-500 block">Коэф. вторички (старый фонд):</span>
+            <div className="flex items-center gap-1 mt-1">
+              <input
+                type="number"
+                step="0.05"
+                value={secondaryCoeff}
+                onChange={(e) => setSecondaryCoeff(Number(e.target.value) || 1.15)}
+                className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+              />
+              <span className="text-[10px] text-zinc-400">x</span>
+            </div>
+          </div>
         </div>
       </div>
+
+      {/* Block 2: Complete Interactive Estimate Catalog (ГОСТ) */}
+      <div className="bg-white dark:bg-zinc-900 rounded-xl p-4 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-3">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <div className="flex items-center gap-2">
+              <span className="text-base">📋</span>
+              <h3 className="font-bold text-sm text-zinc-950 dark:text-white">
+                Каталог абсолютно всех услуг и технологических позиций сметы
+              </h3>
+              <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-semibold">
+                Позиций: {items.length}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
+              Вы можете редактировать расценку любой работы, единицы измерения, а также добавлять новые услуги.
+            </p>
+          </div>
+
+          <button
+            onClick={() => {
+              triggerHaptic('medium');
+              setIsAddServiceOpen(true);
+            }}
+            className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-xs flex items-center gap-1.5 self-start sm:self-auto cursor-pointer"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span>Добавить услугу</span>
+          </button>
+        </div>
+
+        {/* Filter & Search Bar */}
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-2.5 pt-1">
+          <div className="relative w-full sm:w-72">
+            <Search className="w-3.5 h-3.5 text-zinc-400 absolute left-3 top-2.5 pointer-events-none" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Поиск по названию или описанию работы..."
+              className="w-full pl-8 pr-3 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white placeholder-zinc-400 focus:outline-none"
+            />
+          </div>
+
+          <div className="flex items-center gap-1.5 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+            <button
+              onClick={() => setFilterCategory('all')}
+              className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition shrink-0 ${
+                filterCategory === 'all'
+                  ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300'
+              }`}
+            >
+              Все ({items.length})
+            </button>
+            {(Object.keys(CATEGORY_LABELS) as EstimateCategoryType[]).map((cat) => (
+              <button
+                key={cat}
+                onClick={() => setFilterCategory(cat)}
+                className={`px-2.5 py-1 rounded-md text-[11px] font-bold transition shrink-0 flex items-center gap-1 ${
+                  filterCategory === cat
+                    ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950'
+                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-300'
+                }`}
+              >
+                <span>{CATEGORY_LABELS[cat].icon}</span>
+                <span>{CATEGORY_LABELS[cat].title.split(' ')[0]}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Services List Table */}
+        <div className="border border-zinc-200 dark:border-zinc-800 rounded-xl overflow-hidden mt-2">
+          <div className="overflow-x-auto max-h-[550px] overflow-y-auto">
+            <table className="w-full text-left text-xs">
+              <thead className="sticky top-0 bg-zinc-100 dark:bg-zinc-800 border-b border-zinc-200 dark:border-zinc-700 text-zinc-600 dark:text-zinc-300 text-[10px] font-bold uppercase tracking-wider z-10">
+                <tr>
+                  <th className="py-2.5 px-3">Категория</th>
+                  <th className="py-2.5 px-3">Наименование работы</th>
+                  <th className="py-2.5 px-3">Ед. изм.</th>
+                  <th className="py-2.5 px-3">Расход (x)</th>
+                  <th className="py-2.5 px-3">Расценка (₽)</th>
+                  <th className="py-2.5 px-3 text-right">Действия</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+                {filteredItems.map((item) => {
+                  const isEditing = editingItemId === item.id;
+                  const catMeta = CATEGORY_LABELS[item.category] || {
+                    title: item.category,
+                    icon: '⚙️',
+                  };
+
+                  return (
+                    <tr
+                      key={item.id}
+                      className="hover:bg-zinc-50/70 dark:hover:bg-zinc-800/40 transition-colors"
+                    >
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-zinc-700 dark:text-zinc-300">
+                          <span>{catMeta.icon}</span>
+                          <span className="hidden sm:inline">{catMeta.title.split(' ')[0]}</span>
+                        </span>
+                      </td>
+
+                      <td className="py-2 px-3">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editTitleVal}
+                            onChange={(e) => setEditTitleVal(e.target.value)}
+                            className="w-full px-2 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-semibold"
+                          />
+                        ) : (
+                          <div>
+                            <span className="font-bold text-zinc-900 dark:text-white block">
+                              {item.title}
+                            </span>
+                            {item.description && (
+                              <span className="text-[10px] text-zinc-500 block leading-tight">
+                                {item.description}
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </td>
+
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        {isEditing ? (
+                          <input
+                            type="text"
+                            value={editUnitVal}
+                            onChange={(e) => setEditUnitVal(e.target.value)}
+                            className="w-16 px-1.5 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-mono"
+                          />
+                        ) : (
+                          <span className="text-zinc-600 dark:text-zinc-400 font-mono text-[11px]">
+                            {item.unit}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        {isEditing ? (
+                          <input
+                            type="number"
+                            step="0.05"
+                            value={editRatioVal}
+                            onChange={(e) => setEditRatioVal(Number(e.target.value))}
+                            className="w-16 px-1.5 py-1 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-mono"
+                          />
+                        ) : (
+                          <span className="text-zinc-500 font-mono text-[11px]">
+                            ×{item.quantityRatio}
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-2 px-3 whitespace-nowrap">
+                        {isEditing ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              value={editPriceVal}
+                              onChange={(e) => setEditPriceVal(Number(e.target.value))}
+                              className="w-24 px-2 py-1 bg-white dark:bg-zinc-900 border border-emerald-500 rounded text-xs font-black text-emerald-600"
+                            />
+                            <span className="text-zinc-400 text-[10px]">₽</span>
+                          </div>
+                        ) : (
+                          <span className="font-extrabold text-xs text-zinc-950 dark:text-white tabular-nums">
+                            {item.unitPrice.toLocaleString('ru-RU')} ₽
+                          </span>
+                        )}
+                      </td>
+
+                      <td className="py-2 px-3 text-right whitespace-nowrap">
+                        <div className="flex items-center justify-end gap-1">
+                          {isEditing ? (
+                            <button
+                              onClick={() => handleSaveItemEdit(item.id)}
+                              className="px-2 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded text-[11px] font-bold flex items-center gap-1 shadow-xs"
+                            >
+                              <Check className="w-3 h-3" />
+                              <span>OK</span>
+                            </button>
+                          ) : (
+                            <button
+                              onClick={() => handleStartEditItem(item)}
+                              className="p-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 rounded transition"
+                              title="Редактировать работу"
+                            >
+                              <Edit2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            onClick={() => handleDeleteItem(item.id)}
+                            className="p-1 hover:bg-red-50 dark:hover:bg-red-950/60 text-red-500 rounded transition"
+                            title="Удалить услугу из сметы"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      {/* Modal: Add New Service */}
+      {isAddServiceOpen && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 max-w-md w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in zoom-in-95 text-xs">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-3.5">
+              <h3 className="font-bold text-sm text-zinc-950 dark:text-white flex items-center gap-1.5">
+                <Plus className="w-4 h-4 text-emerald-600" />
+                <span>Добавление новой услуги в смету</span>
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsAddServiceOpen(false)}
+                className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 flex items-center justify-center hover:text-zinc-900"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleCreateNewService} className="space-y-3">
+              <div>
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Категория работ:
+                </label>
+                <select
+                  value={newCategory}
+                  onChange={(e) => setNewCategory(e.target.value as EstimateCategoryType)}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                >
+                  <option value="demolition">🔨 Демонтаж и подготовка</option>
+                  <option value="rough">🧱 Черновые работы и выравнивание</option>
+                  <option value="engineering">⚡ Инженерные сети (электрика / сантехника)</option>
+                  <option value="finishing">🎨 Чистовая отделка</option>
+                  <option value="materials">📦 Черновые строительные материалы</option>
+                </select>
+              </div>
+
+              <div>
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Название работы: <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  placeholder="Например: Монтаж шумоизоляции пола Шуманет"
+                  value={newTitle}
+                  onChange={(e) => setNewTitle(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-3 gap-2.5">
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Ед. изм.:
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="м²"
+                    value={newUnit}
+                    onChange={(e) => setNewUnit(e.target.value)}
+                    className="w-full px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Цена (₽):
+                  </label>
+                  <input
+                    type="number"
+                    required
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-bold"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Расход/м²:
+                  </label>
+                  <input
+                    type="number"
+                    step="0.05"
+                    required
+                    value={newRatio}
+                    onChange={(e) => setNewRatio(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Описание технологии / ГОСТ:
+                </label>
+                <textarea
+                  rows={2}
+                  placeholder="Краткое пояснение технологии выполнения работы..."
+                  value={newDesc}
+                  onChange={(e) => setNewDesc(e.target.value)}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs resize-none"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setIsAddServiceOpen(false)}
+                  className="px-3 py-1.5 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                >
+                  Добавить в смету
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

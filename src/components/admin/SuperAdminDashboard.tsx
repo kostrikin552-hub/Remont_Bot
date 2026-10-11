@@ -31,6 +31,7 @@ import {
 } from '../../data/mockAdminData';
 import { TenantCompany, LiveLead, SaasStats, SystemServiceNode, SystemErrorLog } from '../../types/admin';
 import { isSuperAdminUser, SUPERADMIN_TELEGRAM_ID, logoutSuperAdmin } from '../../utils/auth';
+import { triggerHaptic } from '../../utils/telegram';
 import {
   ChevronRight,
   Check,
@@ -127,14 +128,41 @@ export function SuperAdminDashboard({
     };
   }, []);
 
-  // Modals
+  // Modals & Active Selections
   const [selectedLead, setSelectedLead] = useState<LiveLead | null>(null);
   const [simulatorCompany, setSimulatorCompany] = useState<TenantCompany | null>(null);
+  const [selectedPricingCompanyId, setSelectedPricingCompanyId] = useState<string>('remont-pro');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 3500);
+  };
+
+  const handleUpdateCompany = (updatedCompany: TenantCompany) => {
+    setCompanies((prev) => {
+      const updated = prev.map((c) => (c.id === updatedCompany.id ? updatedCompany : c));
+      saveCompaniesToStorage(updated);
+      setStats(computeRealStats(updated, leads, nodes));
+      return updated;
+    });
+    showToast(`Данные бота «${updatedCompany.name}» успешно обновлены!`);
+  };
+
+  const handleDeleteCompany = (companyId: string) => {
+    setCompanies((prev) => {
+      const updated = prev.filter((c) => c.id !== companyId);
+      saveCompaniesToStorage(updated);
+      setStats(computeRealStats(updated, leads, nodes));
+      return updated;
+    });
+    showToast('Бот успешно удален.');
+  };
+
+  const handleEditPricing = (companyId: string) => {
+    setSelectedPricingCompanyId(companyId);
+    setActiveTab('settings');
+    triggerHaptic('selection');
   };
 
   const handleAddDays = (companyId: string, daysToAdd: number) => {
@@ -230,15 +258,6 @@ export function SuperAdminDashboard({
       webhooksHealthy: Math.min(prev.webhooksTotal, prev.webhooksHealthy + 1),
     }));
     showToast('Инцидент помечен как решённый.');
-  };
-
-  const handleUpdateCompany = (updatedCompany: TenantCompany) => {
-    setCompanies((prev) => {
-      const updated = prev.map((c) => (c.id === updatedCompany.id ? updatedCompany : c));
-      saveCompaniesToStorage(updated);
-      setStats(computeRealStats(updated, leads, nodes));
-      return updated;
-    });
   };
 
   const handleUpdateLead = (updatedLead: LiveLead) => {
@@ -469,8 +488,6 @@ export function SuperAdminDashboard({
           {activeTab === 'companies' && (
             <CompanyRegistry
               companies={companies}
-              onAddDays={handleAddDays}
-              onAddTrialLeads={handleAddTrialLeads}
               onToggleBlock={handleToggleBlock}
               onTestMiniApp={(comp) => setSimulatorCompany(comp)}
               onAddCompany={(newComp) => {
@@ -480,8 +497,11 @@ export function SuperAdminDashboard({
                   setStats(computeRealStats(updated, leads, nodes));
                   return updated;
                 });
-                showToast(`Компания "${newComp.name}" успешно зарегистрирована в системе!`);
+                showToast(`Бот для компании «${newComp.name}» успешно создан!`);
               }}
+              onUpdateCompany={handleUpdateCompany}
+              onDeleteCompany={handleDeleteCompany}
+              onEditPricing={handleEditPricing}
             />
           )}
 
@@ -509,7 +529,14 @@ export function SuperAdminDashboard({
             />
           )}
 
-          {activeTab === 'settings' && <GlobalSettings />}
+          {activeTab === 'settings' && (
+            <GlobalSettings
+              companies={companies}
+              selectedCompanyId={selectedPricingCompanyId}
+              onUpdateCompany={handleUpdateCompany}
+              onShowToast={showToast}
+            />
+          )}
         </main>
 
         {/* Mobile Fixed Bottom Navigation Bar (Telegram Native Style) */}

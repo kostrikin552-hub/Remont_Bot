@@ -3584,152 +3584,99 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
     _, url_3m = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "3m")
     _, url_1y = create_payment_url(comp_identifier, comp_name, admin_chat_id or 0, "1y")
 
-    if not can_view_full:
-        # ЗАЯВКА 4 И ДАЛЕЕ (Soft Paywall / Masked Lead)
-        masked_name = mask_client_name(lead.name)
-        masked_phone = mask_client_phone(lead.phone)
-        masked_addr = mask_address(lead.address)
+    # Все заявки поступают прорабу компании со 100% открытыми контактами (модель готовых ботов под ключ)
+    safe_name = html.escape(str(lead.name or "Не указано"))
+    safe_phone = html.escape(str(lead.phone or ""))
+    safe_date = html.escape(str(lead.preferred_date or "Не указана"))
+    safe_comm = html.escape(str(channel_name))
+    safe_addr = html.escape(str(lead.address or "г. Москва (уточняется на замере)"))
 
-        notification_text = (
-            "🔒 <b>НОВАЯ ЗАЯВКА НА ЗАМЕР! ТЕЛЕФОН И АДРЕС ЗАМАСКИРОВАНЫ</b>\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"👤 <b>Клиент:</b> {html.escape(masked_name)}\n"
-            f"📱 <b>Телефон:</b> <code>{html.escape(masked_phone)}</code>\n"
-            f"📍 <b>Адрес:</b> <code>{html.escape(masked_addr)}</code>\n"
-            f"💬 <b>Связь:</b> {html.escape(channel_name)}\n"
-            f"📅 <b>Желаемая дата:</b> {html.escape(str(lead.preferred_date or 'Не указана'))}\n\n"
-            f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м², {lead.renovation_class}\n"
-            f"💰 <b>Сумма сметы:</b> <b>{total_cost_str} ₽</b>\n"
-            f"{options_str}"
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"⚠️ <b>Бесплатные заявки триала ({total_trial}) исчерпаны!</b>\n"
-            f"Клиент только что зафиксировал смету на <b>{total_cost_str} ₽</b> и ожидает звонка для выезда на замер.\n\n"
-            "👉 Нажмите кнопку ниже, чтобы открыть полный номер телефона и точный адрес заказчика:"
-        )
+    trial_header = ""
+    trial_footer = (
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"✅ <i>Заявка принята в работу без ограничений.</i>"
+    )
 
-        inline_keyboard = [
-            [{"text": "🔓 Разблокировать клиента за 2 990 ₽/мес", "url": url_1m}],
-            [
-                {"text": "🔥 3 мес (-22%) — 6 990 ₽", "url": url_3m},
-                {"text": "💎 1 год (-35%) — 22 990 ₽", "url": url_1y},
-            ],
-        ]
+    client_tg = (lead.telegram_username or "").strip()
+    if client_tg.startswith("@"):
+        client_tg = client_tg[1:]
+    if not client_tg:
+        tg_user_match = None
+        if lead.comment:
+            tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", lead.comment)
+        if not tg_user_match and lead.active_options:
+            for opt in lead.active_options:
+                tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", str(opt))
+                if tg_user_match:
+                    break
+        if tg_user_match:
+            client_tg = tg_user_match.group(1)
+
+    tg_line = f"✈️ <b>Telegram:</b> @{client_tg}\n" if client_tg else ""
+
+    # Скоринг лида и статус ключей (Smart Dispatcher)
+    score_val = lead.lead_score if lead.lead_score is not None else 70
+    is_visit_blocked = lead.key_status == "construction" or (lead.is_visit_allowed is False)
+    
+    if lead.lead_grade == "vip" or score_val >= 80:
+        scoring_badge = f"🔥 <b>СКОРИНГ: СРОЧНЫЙ КЛИЕНТ ({score_val}/100)</b>\n"
+    elif is_visit_blocked or lead.lead_grade == "cold":
+        scoring_badge = f"❄️ <b>СКОРИНГ: ПРИЦЕНКА / ДОЛГИЙ ЦИКЛ ({score_val}/100)</b>\n"
     else:
-        # Заявка 1, 2, 3 (Trial) ИЛИ Активная платная подписка
-        safe_name = html.escape(str(lead.name or "Не указано"))
-        safe_phone = html.escape(str(lead.phone or ""))
-        safe_date = html.escape(str(lead.preferred_date or "Не указана"))
-        safe_comm = html.escape(str(channel_name))
-        safe_addr = html.escape(str(lead.address or "г. Москва (уточняется на замере)"))
+        scoring_badge = f"🟡 <b>СКОРИНГ: ТЁПЛЫЙ ИНТЕРЕС ({score_val}/100)</b>\n"
 
-        if is_trial:
-            lead_word = "заявка" if trial_left == 1 else ("заявки" if 2 <= trial_left <= 4 else "заявок")
-            if trial_left > 0:
-                left_str = f"Осталось бесплатных заявок: <b>{trial_left} {lead_word}</b>"
-                footer_hint = f"Вам предоставлены полные контакты заказчика. До маскировки осталось {trial_left} {lead_word}."
-            else:
-                left_str = "Это ваша <b>последняя</b> бесплатная заявка триала"
-                footer_hint = "Это была последняя бесплатная заявка триала! Следующие заявки поступят со скрытыми контактами до оплаты подписки (/subscription)."
-
-            trial_header = (
-                f"🎁 <b>БЕСПЛАТНЫЙ ТРИАЛ:</b> Заявка {trial_num} из {total_trial}\n"
-                f"<i>({left_str})</i>\n\n"
-            )
-            trial_footer = (
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"💡 <i>{footer_hint}</i>"
-            )
-        else:
-            sub_until = access_info.get("subscription_until")
-            until_dt = sub_until.replace(tzinfo=timezone.utc) if (sub_until and sub_until.tzinfo is None) else sub_until
-            until_str = until_dt.strftime("%d.%m.%Y") if until_dt else ""
-            trial_header = f"⭐️ <b>Подписка активна:</b> до {until_str}\n\n"
-            trial_footer = (
-                f"━━━━━━━━━━━━━━━━━━\n"
-                f"✅ <i>Заявка принята в работу без ограничений.</i>"
-            )
-
-        client_tg = (lead.telegram_username or "").strip()
-        if client_tg.startswith("@"):
-            client_tg = client_tg[1:]
-        if not client_tg:
-            tg_user_match = None
-            if lead.comment:
-                tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", lead.comment)
-            if not tg_user_match and lead.active_options:
-                for opt in lead.active_options:
-                    tg_user_match = re.search(r"@([a-zA-Z0-9_]{3,})", str(opt))
-                    if tg_user_match:
-                        break
-            if tg_user_match:
-                client_tg = tg_user_match.group(1)
-
-        tg_line = f"✈️ <b>Telegram:</b> @{client_tg}\n" if client_tg else ""
-
-        # Скоринг лида и статус ключей (Smart Dispatcher)
-        score_val = lead.lead_score if lead.lead_score is not None else 70
-        is_visit_blocked = lead.key_status == "construction" or (lead.is_visit_allowed is False)
-        
-        if lead.lead_grade == "vip" or score_val >= 80:
-            scoring_badge = f"🔥 <b>СКОРИНГ: СРОЧНЫЙ КЛИЕНТ ({score_val}/100)</b>\n"
-        elif is_visit_blocked or lead.lead_grade == "cold":
-            scoring_badge = f"❄️ <b>СКОРИНГ: ПРИЦЕНКА / ДОЛГИЙ ЦИКЛ ({score_val}/100)</b>\n"
-        else:
-            scoring_badge = f"🟡 <b>СКОРИНГ: ТЁПЛЫЙ ИНТЕРЕС ({score_val}/100)</b>\n"
-
-        if is_visit_blocked:
-            visit_warning = (
-                "⛔️ <b>ВНИМАНИЕ ПРОРАБУ: ФИЗИЧЕСКИЙ ВЫЕЗД ЗАПРЕЩЕН!</b>\n"
-                "<i>Дом строится, ключей нет! Не тратьте бензин и время мастера.</i>\n"
-                "👉 <b>Действие:</b> Проведите онлайн-консультацию или добавьте клиента в базу прогрева.\n\n"
-            )
-        elif lead.key_status == "in_30_days":
-            visit_warning = "🔑 <b>Статус ключей:</b> Ожидаются в течение 30 дней (запланируйте предварительный созвон)\n\n"
-        else:
-            visit_warning = "🟢 <b>Статус ключей:</b> Ключи на руках! Можно назначать замерщика на объекте.\n\n"
-
-        # Технические параметры: санузлы и высота потолка
-        baths_text = f"{lead.bathrooms_count:g} санузла" if lead.bathrooms_count and lead.bathrooms_count > 1 else "1 санузел"
-        ceil_text = f", потолки {lead.ceiling_height} м" if lead.ceiling_height else ""
-
-        # Модуль «Инженерный резерв и скрытые факторы» (подсказка прорабу перед выездом)
-        res_pct, res_sum, res_label, res_risks = get_engineering_risk_hints(lead.property_subtype or lead.property_type, float(total_cost_num))
-        risks_lines = "\n".join([f" • {r}" for r in res_risks])
-        reserve_block = (
-            f"🛡 <b>Буфер скрытых работ:</b> +{res_pct}% ({res_sum:,.0f} ₽)\n"
-            f"🔍 <b>Точки лазерного контроля на замере ({res_label}):</b>\n"
-            f"{risks_lines}\n\n"
-        ).replace(",", " ")
-
-        full_move_in_budget_num = float(total_cost_num) * 2.2
-        full_budget_str = f"{full_move_in_budget_num:,.0f}".replace(",", " ")
-        full_budget_line = f"🏠 <b>Бюджет заселения (2.2×):</b> {full_budget_str} ₽ (по формуле 25/40/25/10)\n"
-
-        notification_text = (
-            f"⚡ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР [#{lead_id}]</b>\n"
-            "━━━━━━━━━━━━━━━━━━\n"
-            f"{scoring_badge}"
-            f"{visit_warning}"
-            f"{trial_header}"
-            f"👤 <b>Клиент:</b> {safe_name}\n"
-            f"{tg_line}"
-            f"📱 <b>Телефон:</b> <code>{safe_phone}</code>\n"
-            f"📍 <b>Адрес:</b> {safe_addr}\n"
-            f"💬 <b>Связь:</b> {safe_comm}\n"
-            f"📅 <b>Желаемая дата замера:</b> {safe_date}\n\n"
-            f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м² ({baths_text}{ceil_text}), {lead.renovation_class}\n"
-            f"💰 <b>Расчётная смета:</b> <b>{total_cost_str} ₽</b>\n"
-            f"{full_budget_line}"
-            f"{options_str}\n"
-            f"{reserve_block}"
-            f"{trial_footer}"
+    if is_visit_blocked:
+        visit_warning = (
+            "⛔️ <b>ВНИМАНИЕ ПРОРАБУ: ФИЗИЧЕСКИЙ ВЫЕЗД ЗАПРЕЩЕН!</b>\n"
+            "<i>Дом строится, ключей нет! Не тратьте бензин и время мастера.</i>\n"
+            "👉 <b>Действие:</b> Проведите онлайн-консультацию или добавьте клиента в базу прогрева.\n\n"
         )
+    elif lead.key_status == "in_30_days":
+        visit_warning = "🔑 <b>Статус ключей:</b> Ожидаются в течение 30 дней (запланируйте предварительный созвон)\n\n"
+    else:
+        visit_warning = "🟢 <b>Статус ключей:</b> Ключи на руках! Можно назначать замерщика на объекте.\n\n"
 
-        inline_keyboard = []
-        if client_tg:
-            inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/{client_tg}"}])
-        elif digits_only:
-            inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/+{digits_only}"}])
+    # Технические параметры: санузлы и высота потолка
+    baths_text = f"{lead.bathrooms_count:g} санузла" if lead.bathrooms_count and lead.bathrooms_count > 1 else "1 санузел"
+    ceil_text = f", потолки {lead.ceiling_height} м" if lead.ceiling_height else ""
+
+    # Модуль «Инженерный резерв и скрытые факторы» (подсказка прорабу перед выездом)
+    res_pct, res_sum, res_label, res_risks = get_engineering_risk_hints(lead.property_subtype or lead.property_type, float(total_cost_num))
+    risks_lines = "\n".join([f" • {r}" for r in res_risks])
+    reserve_block = (
+        f"🛡 <b>Буфер скрытых работ:</b> +{res_pct}% ({res_sum:,.0f} ₽)\n"
+        f"🔍 <b>Точки лазерного контроля на замере ({res_label}):</b>\n"
+        f"{risks_lines}\n\n"
+    ).replace(",", " ")
+
+    full_move_in_budget_num = float(total_cost_num) * 2.2
+    full_budget_str = f"{full_move_in_budget_num:,.0f}".replace(",", " ")
+    full_budget_line = f"🏠 <b>Бюджет заселения (2.2×):</b> {full_budget_str} ₽ (по формуле 25/40/25/10)\n"
+
+    notification_text = (
+        f"⚡ <b>НОВАЯ ЗАЯВКА НА ЗАМЕР [#{lead_id}]</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"{scoring_badge}"
+        f"{visit_warning}"
+        f"👤 <b>Клиент:</b> {safe_name}\n"
+        f"{tg_line}"
+        f"📱 <b>Телефон:</b> <code>{safe_phone}</code>\n"
+        f"📍 <b>Адрес:</b> {safe_addr}\n"
+        f"💬 <b>Связь:</b> {safe_comm}\n"
+        f"📅 <b>Желаемая дата замера:</b> {safe_date}\n\n"
+        f"🏠 <b>Объект:</b> {housing_type}, {lead.area} м² ({baths_text}{ceil_text}), {lead.renovation_class}\n"
+        f"💰 <b>Расчётная смета:</b> <b>{total_cost_str} ₽</b>\n"
+        f"{full_budget_line}"
+        f"{options_str}\n"
+        f"{reserve_block}"
+        f"{trial_footer}"
+    )
+
+    inline_keyboard = []
+    if client_tg:
+        inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/{client_tg}"}])
+    elif digits_only:
+        inline_keyboard.append([{"text": "💬 Написать клиенту в Telegram", "url": f"https://t.me/+{digits_only}"}])
 
     # 5. Отправка мгновенного push-сообщения прорабу
     if admin_chat_id:

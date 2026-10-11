@@ -2,46 +2,73 @@ import { useState, useMemo } from 'react';
 import {
   Search,
   Plus,
-  Zap,
   ExternalLink,
-  ShieldAlert,
-  ShieldCheck,
-  CheckCircle,
-  Clock,
-  XCircle,
+  Copy,
+  Check,
   Building,
   Phone,
   Send,
+  SlidersHorizontal,
+  Smartphone,
+  Trash2,
+  Edit2,
+  CheckCircle2,
+  Clock,
+  Sparkles,
+  Bot,
+  DollarSign,
 } from 'lucide-react';
-import { TenantCompany } from '../../types/admin';
+import { TenantCompany, BotDeploymentStatus } from '../../types/admin';
+import { triggerHaptic } from '../../utils/telegram';
 
 interface CompanyRegistryProps {
   companies: TenantCompany[];
-  onAddDays: (companyId: string, days: number) => void;
-  onAddTrialLeads: (companyId: string, leads: number) => void;
-  onToggleBlock: (companyId: string) => void;
+  onToggleBlock?: (companyId: string) => void;
   onTestMiniApp: (company: TenantCompany) => void;
   onAddCompany?: (newCompany: TenantCompany) => void;
+  onUpdateCompany?: (updatedCompany: TenantCompany) => void;
+  onDeleteCompany?: (companyId: string) => void;
+  onEditPricing?: (companyId: string) => void;
+  // Compatibility props
+  onAddDays?: (companyId: string, days: number) => void;
+  onAddTrialLeads?: (companyId: string, leads: number) => void;
 }
 
 export function CompanyRegistry({
   companies,
-  onAddDays,
-  onAddTrialLeads,
-  onToggleBlock,
   onTestMiniApp,
   onAddCompany,
+  onUpdateCompany,
+  onDeleteCompany,
+  onEditPricing,
 }: CompanyRegistryProps) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCity, setSelectedCity] = useState<string>('all');
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
+  const [copiedId, setCopiedId] = useState<string | null>(null);
+
+  // New Bot Modal State
   const [isNewCompanyModalOpen, setIsNewCompanyModalOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newCity, setNewCity] = useState('Москва');
   const [newForeman, setNewForeman] = useState('');
   const [newPhone, setNewPhone] = useState('+7 ');
   const [newBot, setNewBot] = useState('');
+  const [newAdminChatId, setNewAdminChatId] = useState('');
   const [newRadius, setNewRadius] = useState('Вся Москва + 15 км от МКАД');
+  const [newPrice, setNewPrice] = useState(45000);
+  const [newStatus, setNewStatus] = useState<BotDeploymentStatus>('ready');
+
+  // Initial custom pricing for newly created bot
+  const [newCosmetic, setNewCosmetic] = useState(4500);
+  const [newCapital, setNewCapital] = useState(8500);
+  const [newDesigner, setNewDesigner] = useState(15000);
+  const [newMaterials, setNewMaterials] = useState(3500);
+  const [newDemolition, setNewDemolition] = useState(1200);
+  const [newDesignProject, setNewDesignProject] = useState(2000);
+
+  // Edit Bot Modal State
+  const [editingCompany, setEditingCompany] = useState<TenantCompany | null>(null);
 
   const cities = useMemo(() => {
     return Array.from(new Set(companies.map((c) => c.city)));
@@ -57,12 +84,22 @@ export function CompanyRegistry({
         c.foremanPhone.includes(searchQuery);
 
       const matchCity = selectedCity === 'all' || c.city === selectedCity;
-      const matchStatus =
-        selectedStatus === 'all' || c.subscriptionStatus === selectedStatus;
+      const currentBotStatus = c.botStatus || (c.subscriptionStatus === 'active' ? 'active' : 'ready');
+      const matchStatus = selectedStatus === 'all' || currentBotStatus === selectedStatus;
 
       return matchSearch && matchCity && matchStatus;
     });
   }, [companies, searchQuery, selectedCity, selectedStatus]);
+
+  const handleCopyClientLink = (company: TenantCompany) => {
+    triggerHaptic('light');
+    const origin = window.location.origin;
+    const cleanBot = company.botUsername.replace(/^@/, '');
+    const clientUrl = `${origin}/?bot=${encodeURIComponent(cleanBot)}&company=${encodeURIComponent(company.id)}`;
+    navigator.clipboard.writeText(clientUrl);
+    setCopiedId(company.id);
+    setTimeout(() => setCopiedId(null), 2500);
+  };
 
   const handleCreateCompanySubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -74,18 +111,20 @@ export function CompanyRegistry({
       .replace(/[^a-z0-9а-яё]/gi, '-')
       .replace(/-+/g, '-');
     const compId = `comp-${slug}-${Math.floor(100 + Math.random() * 900)}`;
+    const botUser = (newBot || `${slug}_bot`).replace(/^@/, '').trim();
 
     const created: TenantCompany = {
       id: compId,
       name: newName.trim(),
       city: newCity.trim(),
-      foremanName: newForeman.trim() || 'Прораб',
+      foremanName: newForeman.trim() || 'Дежурный инженер',
       foremanPhone: newPhone.trim(),
-      foremanTg: `@${(newForeman || 'foreman').toLowerCase().replace(/\s+/g, '_')}`,
-      botUsername: (newBot || `${slug}_bot`).replace(/^@/, '').trim(),
-      subscriptionStatus: 'trial',
-      daysLeft: 14,
-      trialLeadsLeft: 3,
+      foremanTg: `@${botUser}`,
+      botUsername: botUser,
+      adminChatId: newAdminChatId.trim() || undefined,
+      botStatus: newStatus,
+      botPrice: Number(newPrice) || 45000,
+      soldAt: newStatus === 'active' ? new Date().toISOString().split('T')[0] : undefined,
       totalLeads: 0,
       revenueEst: 0,
       registeredAt: new Date().toISOString().split('T')[0],
@@ -93,40 +132,87 @@ export function CompanyRegistry({
       webhookStatus: 'healthy',
       pricingMultiplier: 1.0,
       serviceRadius: newRadius.trim() || `${newCity.trim()} и пригород до 15 км`,
+      subscriptionStatus: 'active',
+      daysLeft: 365,
+      trialLeadsLeft: 999,
     };
+
+    // Save custom pricing for this created company in localStorage
+    if (typeof window !== 'undefined') {
+      try {
+        localStorage.setItem(
+          `company_pricing_${compId}`,
+          JSON.stringify({
+            cosmeticPrice: Number(newCosmetic) || 4500,
+            capitalPrice: Number(newCapital) || 8500,
+            designerPrice: Number(newDesigner) || 15000,
+            materialsPrice: Number(newMaterials) || 3500,
+            demolitionPrice: Number(newDemolition) || 1200,
+            designProjectPrice: Number(newDesignProject) || 2000,
+          })
+        );
+      } catch (err) {
+        console.error('Error storing custom pricing:', err);
+      }
+    }
 
     if (onAddCompany) {
       onAddCompany(created);
     }
+
     setIsNewCompanyModalOpen(false);
     setNewName('');
     setNewForeman('');
     setNewPhone('+7 ');
     setNewBot('');
+    setNewAdminChatId('');
+    setNewPrice(45000);
+  };
+
+  const handleSaveEditedCompany = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingCompany) return;
+
+    if (onUpdateCompany) {
+      onUpdateCompany(editingCompany);
+    }
+    setEditingCompany(null);
+  };
+
+  const handleDelete = (id: string, name: string) => {
+    if (window.confirm(`Вы уверены, что хотите удалить бота «${name}»?`)) {
+      if (onDeleteCompany) {
+        onDeleteCompany(id);
+      }
+    }
   };
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-2">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
         <div>
           <h1 className="text-base font-bold text-zinc-950 dark:text-white uppercase tracking-wider flex items-center gap-2">
-            <span>Реестр строительных компаний</span>
+            <Bot className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+            <span>Боты строительных компаний</span>
             <span className="text-xs px-2 py-0.5 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 font-semibold normal-case">
               Всего: {companies.length}
             </span>
           </h1>
           <p className="text-xs text-zinc-500 dark:text-zinc-400 mt-0.5">
-            Управление тарифами, продление подписок и симуляция клиентского Mini App.
+            Создание и продажа готовых ботов под ключ с эксклюзивными ценами и сметами конкретной компании.
           </p>
         </div>
 
         <button
-          onClick={() => setIsNewCompanyModalOpen(true)}
-          className="px-3 py-1.5 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-xs rounded-lg transition shadow-xs flex items-center gap-1.5 self-start md:self-auto cursor-pointer"
+          onClick={() => {
+            triggerHaptic('medium');
+            setIsNewCompanyModalOpen(true);
+          }}
+          className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-2 self-start md:self-auto cursor-pointer"
         >
-          <Plus className="w-3.5 h-3.5" />
-          <span>Подключить СК</span>
+          <Plus className="w-4 h-4" />
+          <span>Создать нового бота</span>
         </button>
       </div>
 
@@ -165,418 +251,611 @@ export function CompanyRegistry({
             className="flex-1 md:flex-none px-2.5 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-bold text-zinc-800 dark:text-zinc-200 focus:outline-none min-w-0"
           >
             <option value="all">Все статусы</option>
-            <option value="active">Активна (Подписка)</option>
-            <option value="trial">Триал (3 лида)</option>
-            <option value="expired">Истекла / Ожидает оплаты</option>
+            <option value="active">Активен у клиента</option>
+            <option value="ready">Готов к продаже</option>
+            <option value="development">В разработке</option>
           </select>
         </div>
       </div>
 
       {/* Mobile Card List View (< md) */}
       <div className="md:hidden space-y-2.5">
-        {filtered.map((company) => (
-          <div
-            key={company.id}
-            className={`bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-2.5 ${
-              company.isBlocked ? 'opacity-60 bg-red-50/50 dark:bg-red-950/20' : ''
-            }`}
-          >
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-extrabold text-xs shrink-0">
-                  {company.name.charAt(0)}
-                </div>
-                <div>
-                  <div className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1">
-                    <span>{company.name}</span>
-                    {company.isBlocked && (
-                      <span className="px-1 py-0.2 rounded text-[9px] bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 font-extrabold">
-                        Блок
-                      </span>
-                    )}
+        {filtered.map((company) => {
+          const status = company.botStatus || (company.subscriptionStatus === 'active' ? 'active' : 'ready');
+          const isCopied = copiedId === company.id;
+
+          return (
+            <div
+              key={company.id}
+              className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-2.5"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-extrabold text-xs shrink-0">
+                    {company.name.charAt(0)}
                   </div>
-                  <div className="text-[10px] text-zinc-500">
-                    {company.city} • @{company.botUsername}
+                  <div>
+                    <div className="font-bold text-xs text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      <span>{company.name}</span>
+                    </div>
+                    <div className="text-[10px] text-zinc-500">
+                      {company.city} • @{company.botUsername}
+                    </div>
                   </div>
                 </div>
-              </div>
 
-              {company.subscriptionStatus === 'active' && (
-                <span className="px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold shrink-0">
-                  {company.daysLeft} дн
-                </span>
-              )}
-              {company.subscriptionStatus === 'trial' && (
-                <span className="px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 text-[10px] font-extrabold shrink-0">
-                  Триал (ост. {company.trialLeadsLeft})
-                </span>
-              )}
-              {company.subscriptionStatus === 'expired' && (
-                <span className="px-1.5 py-0.5 rounded-sm bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 text-[10px] font-extrabold shrink-0">
-                  Истекла
-                </span>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
-              <div>
-                <span className="text-zinc-500 block text-[10px]">Прораб / Телефон:</span>
-                <span className="font-semibold text-zinc-800 dark:text-zinc-200 block">{company.foremanName}</span>
-                <span className="text-zinc-500 font-mono text-[10px]">{company.foremanPhone}</span>
-              </div>
-              <div>
-                <span className="text-zinc-500 block text-[10px]">Лидов / Сметы:</span>
-                <span className="font-bold text-zinc-950 dark:text-white">
-                  {company.totalLeads} лид. • {(company.revenueEst / 1000000).toFixed(1)} млн ₽
-                </span>
-              </div>
-            </div>
-
-            <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-1.5">
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <button
-                  onClick={() => onAddDays(company.id, 30)}
-                  className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold rounded-md transition flex items-center gap-1 shrink-0"
-                >
-                  <Plus className="w-3 h-3" />
-                  <span>+30 дн</span>
-                </button>
-                {company.subscriptionStatus === 'trial' && (
-                  <button
-                    onClick={() => onAddTrialLeads(company.id, 3)}
-                    className="px-2 py-1 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 text-[11px] font-bold rounded-md transition flex items-center gap-1 shrink-0"
-                  >
-                    <Zap className="w-3 h-3" />
-                    <span>+3</span>
-                  </button>
+                {status === 'active' && (
+                  <span className="px-2 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold shrink-0">
+                    Активен
+                  </span>
+                )}
+                {status === 'ready' && (
+                  <span className="px-2 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 text-[10px] font-extrabold shrink-0">
+                    Готов к продаже
+                  </span>
+                )}
+                {status === 'development' && (
+                  <span className="px-2 py-0.5 rounded-sm bg-blue-100 dark:bg-blue-950/60 text-blue-900 dark:text-blue-300 text-[10px] font-extrabold shrink-0">
+                    В разработке
+                  </span>
                 )}
               </div>
 
-              <div className="flex items-center gap-1 shrink-0 ml-auto">
-                <button
-                  onClick={() => onTestMiniApp(company)}
-                  className="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold rounded-md transition flex items-center gap-1"
-                >
-                  <ExternalLink className="w-3 h-3" />
-                  <span>Тест</span>
-                </button>
-                <button
-                  onClick={() => onToggleBlock(company.id)}
-                  className={`p-1.5 rounded-md transition ${
-                    company.isBlocked
-                      ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                      : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500'
-                  }`}
-                >
-                  {company.isBlocked ? <ShieldAlert className="w-3.5 h-3.5" /> : <ShieldCheck className="w-3.5 h-3.5" />}
-                </button>
+              <div className="grid grid-cols-2 gap-2 text-[11px] pt-1 border-t border-zinc-100 dark:border-zinc-800/80">
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Прораб / Телефон:</span>
+                  <span className="font-semibold text-zinc-800 dark:text-zinc-200 block">{company.foremanName}</span>
+                  <span className="text-zinc-500 font-mono text-[10px]">{company.foremanPhone}</span>
+                </div>
+                <div>
+                  <span className="text-zinc-500 block text-[10px]">Стоимость / Сметы:</span>
+                  <span className="font-bold text-zinc-950 dark:text-white block">
+                    {(company.botPrice || 45000).toLocaleString('ru-RU')} ₽
+                  </span>
+                  <span className="text-zinc-500 text-[10px]">
+                    Заявок: {company.totalLeads}
+                  </span>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  {onEditPricing && (
+                    <button
+                      onClick={() => onEditPricing(company.id)}
+                      className="px-2 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 text-[11px] font-bold rounded-md transition flex items-center gap-1 shrink-0"
+                    >
+                      <SlidersHorizontal className="w-3 h-3" />
+                      <span>Услуги & Цены</span>
+                    </button>
+                  )}
+                  <button
+                    onClick={() => handleCopyClientLink(company)}
+                    className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold rounded-md transition flex items-center gap-1 shrink-0"
+                  >
+                    {isCopied ? <Check className="w-3 h-3 text-emerald-500" /> : <Copy className="w-3 h-3" />}
+                    <span>{isCopied ? 'Скопировано!' : 'Ссылка'}</span>
+                  </button>
+                  <button
+                    onClick={() => onTestMiniApp(company)}
+                    className="px-2 py-1 bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 text-[11px] font-bold rounded-md transition flex items-center gap-1 shrink-0"
+                  >
+                    <Smartphone className="w-3 h-3" />
+                    <span>Тест</span>
+                  </button>
+                </div>
+
+                <div className="flex items-center gap-1">
+                  <button
+                    onClick={() => setEditingCompany(company)}
+                    className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 rounded transition"
+                    title="Редактировать параметры"
+                  >
+                    <Edit2 className="w-3.5 h-3.5" />
+                  </button>
+                  <button
+                    onClick={() => handleDelete(company.id, company.name)}
+                    className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/60 text-red-500 rounded transition"
+                    title="Удалить бота"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
 
-      {/* Main Companies Table (Desktop md+) */}
+      {/* Desktop Table View (>= md) */}
       <div className="hidden md:block bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-xs">
             <thead>
-              <tr className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-zinc-600 dark:text-zinc-400">
-                <th className="py-2.5 px-3 font-bold">Компания / Город</th>
-                <th className="py-2.5 px-3 font-bold">Прораб & Telegram</th>
-                <th className="py-2.5 px-3 font-bold">Бот компании</th>
-                <th className="py-2.5 px-3 font-bold">Статус & Остаток</th>
-                <th className="py-2.5 px-3 font-bold">Лидов / Сметы</th>
-                <th className="py-2.5 px-3 font-bold">Регистрация</th>
-                <th className="py-2.5 px-3 text-right font-bold">Действия</th>
+              <tr className="bg-zinc-50 dark:bg-zinc-800/60 border-b border-zinc-200 dark:border-zinc-800 text-zinc-500 font-bold uppercase text-[10px] tracking-wider">
+                <th className="py-3 px-4">Компания / Telegram Бот</th>
+                <th className="py-3 px-4">Город / Регион</th>
+                <th className="py-3 px-4">Ответственный прораб</th>
+                <th className="py-3 px-4">Статус продажи</th>
+                <th className="py-3 px-4">Стоимость бота</th>
+                <th className="py-3 px-4">Заявки клиентов</th>
+                <th className="py-3 px-4 text-right">Действия</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-200 dark:divide-zinc-800">
-              {filtered.map((company) => (
-                <tr
-                  key={company.id}
-                  className={`hover:bg-zinc-50 dark:hover:bg-zinc-800/40 transition-colors ${
-                    company.isBlocked ? 'opacity-50 bg-red-50 dark:bg-red-950/20' : ''
-                  }`}
-                >
-                  {/* Компания */}
-                  <td className="py-3 px-3">
-                    <div className="flex items-center gap-2.5">
-                      <div className="w-7 h-7 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-extrabold text-xs shadow-xs">
-                        {company.name.charAt(0)}
-                      </div>
-                      <div>
-                        <div className="font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
-                          <span>{company.name}</span>
-                          {company.isBlocked && (
-                            <span className="px-1.5 py-0.5 rounded text-[9px] bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300 font-extrabold">
-                              Блок
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-[11px] text-zinc-500 flex items-center gap-1">
-                          <span>{company.city}</span>
-                          <span className="text-zinc-400">•</span>
-                          <span className="font-mono text-[10px]">{company.id}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </td>
+            <tbody className="divide-y divide-zinc-100 dark:divide-zinc-800">
+              {filtered.map((company) => {
+                const status = company.botStatus || (company.subscriptionStatus === 'active' ? 'active' : 'ready');
+                const isCopied = copiedId === company.id;
 
-                  {/* Прораб & TG */}
-                  <td className="py-3 px-3">
-                    <div className="font-semibold text-zinc-900 dark:text-zinc-100">{company.foremanName}</div>
-                    <div className="text-[11px] text-zinc-500 flex items-center gap-2">
-                      <span>{company.foremanPhone}</span>
-                      <a
-                        href={`https://t.me/${company.foremanTg.replace('@', '')}`}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="text-zinc-900 dark:text-white font-bold hover:underline flex items-center gap-0.5"
-                      >
-                        <Send className="w-2.5 h-2.5" />
-                        <span>{company.foremanTg}</span>
-                      </a>
-                    </div>
-                  </td>
+                return (
+                  <tr
+                    key={company.id}
+                    className="hover:bg-zinc-50/70 dark:hover:bg-zinc-800/40 transition-colors"
+                  >
+                    <td className="py-3 px-4">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-extrabold text-xs shrink-0">
+                          {company.name.charAt(0)}
+                        </div>
+                        <div>
+                          <div className="font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                            <span>{company.name}</span>
+                          </div>
+                          <div className="text-[11px] text-zinc-500 flex items-center gap-1 font-mono">
+                            <Send className="w-3 h-3 text-blue-500" />
+                            <a
+                              href={`https://t.me/${company.botUsername.replace('@', '')}`}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="hover:underline text-blue-600 dark:text-blue-400"
+                            >
+                              @{company.botUsername}
+                            </a>
+                          </div>
+                        </div>
+                      </div>
+                    </td>
 
-                  {/* Бот */}
-                  <td className="py-3 px-3">
-                    <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 font-mono text-[11px] border border-zinc-200 dark:border-zinc-700">
-                      <span>@{company.botUsername}</span>
-                      {company.webhookStatus === 'healthy' ? (
-                        <span title="Вебхук активен" className="w-2 h-2 rounded-full bg-emerald-500" />
-                      ) : (
-                        <span title={company.webhookError || 'Ошибка'} className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+                    <td className="py-3 px-4 font-medium text-zinc-700 dark:text-zinc-300">
+                      <div>{company.city}</div>
+                      {company.serviceRadius && (
+                        <div className="text-[10px] text-zinc-400 truncate max-w-[160px]">
+                          {company.serviceRadius}
+                        </div>
                       )}
-                    </div>
-                    {company.webhookError && (
-                      <div className="text-[10px] text-amber-600 dark:text-amber-400 truncate max-w-[140px] mt-0.5 font-medium">
-                        {company.webhookError}
-                      </div>
-                    )}
-                  </td>
+                    </td>
 
-                  {/* Статус */}
-                  <td className="py-3 px-3">
-                    {company.subscriptionStatus === 'active' && (
-                      <div>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold">
-                          <CheckCircle className="w-3 h-3" />
-                          <span>Активна</span>
-                        </span>
-                        <div className="text-[11px] text-zinc-500 mt-1 font-medium">
-                          Осталось: <span className="font-bold text-zinc-950 dark:text-white">{company.daysLeft} дн.</span>
-                        </div>
+                    <td className="py-3 px-4">
+                      <div className="font-medium text-zinc-900 dark:text-zinc-100">
+                        {company.foremanName}
                       </div>
-                    )}
-                    {company.subscriptionStatus === 'trial' && (
-                      <div>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 text-[10px] font-extrabold">
+                      <div className="text-[10px] text-zinc-500 font-mono">
+                        {company.foremanPhone}
+                      </div>
+                    </td>
+
+                    <td className="py-3 px-4">
+                      {status === 'active' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 text-[10px] font-extrabold">
+                          <CheckCircle2 className="w-3 h-3" />
+                          <span>Активен у клиента</span>
+                        </span>
+                      )}
+                      {status === 'ready' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 text-[10px] font-extrabold">
+                          <Sparkles className="w-3 h-3" />
+                          <span>Готов к продаже</span>
+                        </span>
+                      )}
+                      {status === 'development' && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-sm bg-blue-100 dark:bg-blue-950/60 text-blue-900 dark:text-blue-300 text-[10px] font-extrabold">
                           <Clock className="w-3 h-3" />
-                          <span>Триал</span>
+                          <span>В разработке</span>
                         </span>
-                        <div className="text-[11px] text-zinc-500 mt-1 font-medium">
-                          Осталось: <span className="font-bold text-zinc-900 dark:text-zinc-100">{company.trialLeadsLeft} {company.trialLeadsLeft === 1 ? 'лид' : (company.trialLeadsLeft >= 2 && company.trialLeadsLeft <= 4 ? 'лида' : 'лидов')}</span>
-                        </div>
-                      </div>
-                    )}
-                    {company.subscriptionStatus === 'expired' && (
-                      <div>
-                        <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-sm bg-red-100 dark:bg-red-950/60 text-red-800 dark:text-red-300 text-[10px] font-extrabold">
-                          <XCircle className="w-3 h-3" />
-                          <span>Истекла</span>
-                        </span>
-                        <div className="text-[10px] text-zinc-500 mt-1">
-                          Нужна оплата 2 990 ₽
-                        </div>
-                      </div>
-                    )}
-                  </td>
-
-                  {/* Лидов / Сметы */}
-                  <td className="py-3 px-3">
-                    <div className="font-bold text-zinc-950 dark:text-white">{company.totalLeads} заявок</div>
-                    <div className="text-[11px] text-zinc-500 font-medium">
-                      {(company.revenueEst / 1000000).toFixed(1)} млн ₽
-                    </div>
-                  </td>
-
-                  {/* Регистрация */}
-                  <td className="py-3 px-3 text-zinc-500 whitespace-nowrap">
-                    {company.registeredAt}
-                  </td>
-
-                  {/* Действия */}
-                  <td className="py-3 px-3 text-right">
-                    <div className="flex items-center justify-end gap-1">
-                      {/* Кнопка +30 дней */}
-                      <button
-                        onClick={() => onAddDays(company.id, 30)}
-                        title="Продлить подписку на 30 дней"
-                        className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 text-[11px] font-bold rounded-md transition flex items-center gap-1"
-                      >
-                        <Plus className="w-3 h-3" />
-                        <span>30 дн</span>
-                      </button>
-
-                      {/* Кнопка +3 лида */}
-                      {company.subscriptionStatus === 'trial' && (
-                        <button
-                          onClick={() => onAddTrialLeads(company.id, 3)}
-                          title="Добавить +3 лида"
-                          className="px-2 py-1 bg-amber-100 hover:bg-amber-200 dark:bg-amber-900/40 text-amber-900 dark:text-amber-200 text-[11px] font-bold rounded-md transition flex items-center gap-1"
-                        >
-                          <Zap className="w-3 h-3" />
-                          <span>+3</span>
-                        </button>
                       )}
+                    </td>
 
-                      {/* Тест Mini App */}
-                      <button
-                        onClick={() => onTestMiniApp(company)}
-                        title="Открыть Mini App симулятор"
-                        className="p-1.5 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 rounded-md transition"
-                      >
-                        <ExternalLink className="w-3.5 h-3.5" />
-                      </button>
+                    <td className="py-3 px-4 font-extrabold text-zinc-950 dark:text-white">
+                      {(company.botPrice || 45000).toLocaleString('ru-RU')} ₽
+                    </td>
 
-                      {/* Блокировка */}
-                      <button
-                        onClick={() => onToggleBlock(company.id)}
-                        title={company.isBlocked ? 'Разблокировать' : 'Заблокировать'}
-                        className={`p-1.5 rounded-md transition ${
-                          company.isBlocked
-                            ? 'bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300'
-                            : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-500 hover:text-red-600'
-                        }`}
-                      >
-                        {company.isBlocked ? (
-                          <ShieldAlert className="w-3.5 h-3.5" />
-                        ) : (
-                          <ShieldCheck className="w-3.5 h-3.5" />
+                    <td className="py-3 px-4">
+                      <span className="font-bold text-zinc-900 dark:text-zinc-100">
+                        {company.totalLeads} заявок
+                      </span>
+                      {company.revenueEst > 0 && (
+                        <div className="text-[10px] text-zinc-500">
+                          {(company.revenueEst / 1000000).toFixed(1)} млн ₽
+                        </div>
+                      )}
+                    </td>
+
+                    <td className="py-3 px-4 text-right">
+                      <div className="flex items-center justify-end gap-1.5">
+                        {onEditPricing && (
+                          <button
+                            onClick={() => onEditPricing(company.id)}
+                            className="px-2.5 py-1 bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold text-xs rounded-lg transition flex items-center gap-1 shadow-xs"
+                            title="Редактировать абсолютно все услуги и расценки этого бота"
+                          >
+                            <SlidersHorizontal className="w-3.5 h-3.5" />
+                            <span>Услуги & Цены</span>
+                          </button>
                         )}
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
+                        <button
+                          onClick={() => handleCopyClientLink(company)}
+                          className="px-2 py-1 bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 font-bold text-xs rounded-lg transition flex items-center gap-1"
+                          title="Скопировать ссылку на персональный Mini App клиента"
+                        >
+                          {isCopied ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                          <span>{isCopied ? 'Скопировано!' : 'Ссылка'}</span>
+                        </button>
+                        <button
+                          onClick={() => onTestMiniApp(company)}
+                          className="p-1.5 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 rounded-lg transition"
+                          title="Протестировать Mini App"
+                        >
+                          <Smartphone className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => setEditingCompany(company)}
+                          className="p-1.5 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-500 rounded-lg transition"
+                          title="Изменить реквизиты бота"
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </button>
+                        <button
+                          onClick={() => handleDelete(company.id, company.name)}
+                          className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/60 text-red-500 rounded-lg transition"
+                          title="Удалить бота"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Modal: Connect New Company */}
+      {/* Modal: Create New Bot */}
       {isNewCompanyModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-150">
-          <div className="bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 rounded-2xl w-full max-w-md overflow-hidden shadow-xl p-5 space-y-4">
-            <div className="flex items-center justify-between border-b border-zinc-200 dark:border-zinc-800 pb-3">
-              <h2 className="text-sm font-bold text-zinc-950 dark:text-white uppercase tracking-wider">
-                Подключить новую СК к платформе
-              </h2>
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 max-w-lg w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl max-h-[92vh] overflow-y-auto animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 flex items-center justify-center font-bold">
+                  <Bot className="w-4 h-4" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-sm text-zinc-950 dark:text-white">
+                    Создание нового бота под компанию
+                  </h3>
+                  <p className="text-[11px] text-zinc-500">
+                    Эксклюзивный бот с индивидуальными ценами и сметами
+                  </p>
+                </div>
+              </div>
               <button
+                type="button"
                 onClick={() => setIsNewCompanyModalOpen(false)}
-                className="text-zinc-500 hover:text-zinc-950 dark:hover:text-white text-xs font-bold"
+                className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 flex items-center justify-center hover:text-zinc-900 dark:hover:text-white"
               >
                 ✕
               </button>
             </div>
 
-            <form onSubmit={handleCreateCompanySubmit} className="space-y-3 text-xs">
+            <form onSubmit={handleCreateCompanySubmit} className="space-y-3.5 text-xs">
               <div>
-                <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
-                  Название строительной компании:
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Название компании / бренда: <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
                   required
-                  placeholder="Например: АльянсСтрой"
+                  placeholder="Например: СК «Олимп» или «Ремонт-Премиум»"
                   value={newName}
                   onChange={(e) => setNewName(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none"
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500"
                 />
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
-                    Город работы:
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Город / Регион:
                   </label>
                   <input
                     type="text"
                     required
                     value={newCity}
                     onChange={(e) => setNewCity(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none"
+                    placeholder="Москва"
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
-                    Имя прораба:
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Имя прораба / инженера:
                   </label>
                   <input
                     type="text"
-                    placeholder="Иван Петров"
+                    placeholder="Алексей"
                     value={newForeman}
                     onChange={(e) => setNewForeman(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none"
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500"
                   />
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
-                    Телефон прораба:
-                  </label>
-                  <input
-                    type="tel"
-                    required
-                    value={newPhone}
-                    onChange={(e) => setNewPhone(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none font-mono"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
-                    Telegram бот (@bot):
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Телефон для клиентов:
                   </label>
                   <input
                     type="text"
-                    placeholder="@my_remont_bot"
+                    placeholder="+7 (920) 000-00-00"
+                    value={newPhone}
+                    onChange={(e) => setNewPhone(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Юзернейм бота Telegram:
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="olimp_remont_bot"
                     value={newBot}
                     onChange={(e) => setNewBot(e.target.value)}
-                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none font-mono"
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Chat ID прораба (куда слать заявки):
+                  </label>
+                  <input
+                    type="text"
+                    placeholder="5629144056"
+                    value={newAdminChatId}
+                    onChange={(e) => setNewAdminChatId(e.target.value)}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                    Стоимость продажи бота (₽):
+                  </label>
+                  <input
+                    type="number"
+                    value={newPrice}
+                    onChange={(e) => setNewPrice(Number(e.target.value))}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none focus:border-emerald-500 font-bold"
                   />
                 </div>
               </div>
 
               <div>
-                <label className="text-[10px] font-bold text-zinc-600 dark:text-zinc-400 mb-1 block uppercase">
-                  Рабочий радиус / Гео-зона выезда:
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Статус готовности бота:
                 </label>
-                <input
-                  type="text"
-                  placeholder="Например: Вся Москва + 15 км от МКАД"
-                  value={newRadius}
-                  onChange={(e) => setNewRadius(e.target.value)}
-                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-zinc-950 dark:text-white font-medium focus:outline-none"
-                />
+                <select
+                  value={newStatus}
+                  onChange={(e) => setNewStatus(e.target.value as BotDeploymentStatus)}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs text-zinc-900 dark:text-white focus:outline-none font-medium"
+                >
+                  <option value="ready">🟡 Готов к продаже клиенту</option>
+                  <option value="active">🟢 Активен (уже передан клиенту)</option>
+                  <option value="development">⚪️ В разработке / черновик</option>
+                </select>
               </div>
 
-              <div className="pt-2 flex items-center justify-end gap-2">
+              {/* Стартовые расценки для бота */}
+              <div className="p-3 bg-zinc-50 dark:bg-zinc-800/60 rounded-xl border border-zinc-200/80 dark:border-zinc-700/80 space-y-2.5">
+                <div className="font-bold text-zinc-900 dark:text-white flex items-center justify-between">
+                  <span>Стартовые расценки бота (₽/м²):</span>
+                  <span className="text-[10px] text-zinc-400 font-normal">можно изменить в любой момент</span>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Косметический:</span>
+                    <input
+                      type="number"
+                      value={newCosmetic}
+                      onChange={(e) => setNewCosmetic(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Капитальный:</span>
+                    <input
+                      type="number"
+                      value={newCapital}
+                      onChange={(e) => setNewCapital(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Дизайнерский:</span>
+                    <input
+                      type="number"
+                      value={newDesigner}
+                      onChange={(e) => setNewDesigner(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-3 gap-2">
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Черновые мат.:</span>
+                    <input
+                      type="number"
+                      value={newMaterials}
+                      onChange={(e) => setNewMaterials(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Демонтаж:</span>
+                    <input
+                      type="number"
+                      value={newDemolition}
+                      onChange={(e) => setNewDemolition(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+                    />
+                  </div>
+                  <div>
+                    <span className="text-[10px] text-zinc-500 block">Дизайн-проект:</span>
+                    <input
+                      type="number"
+                      value={newDesignProject}
+                      onChange={(e) => setNewDesignProject(Number(e.target.value))}
+                      className="w-full px-2 py-1.5 bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-700 rounded text-xs font-bold"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-100 dark:border-zinc-800">
                 <button
                   type="button"
                   onClick={() => setIsNewCompanyModalOpen(false)}
-                  className="px-3 py-1.5 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold transition"
+                  className="px-3.5 py-2 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold"
                 >
                   Отмена
                 </button>
                 <button
                   type="submit"
-                  className="px-4 py-1.5 rounded-lg bg-zinc-900 hover:bg-zinc-800 dark:bg-white dark:hover:bg-zinc-100 text-white dark:text-zinc-950 font-bold transition shadow-xs"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold shadow-xs flex items-center gap-1.5"
                 >
-                  Зарегистрировать СК
+                  <Plus className="w-3.5 h-3.5" />
+                  <span>Создать бота</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Edit Existing Bot */}
+      {editingCompany && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-zinc-900 rounded-2xl p-5 max-w-md w-full border border-zinc-200 dark:border-zinc-800 shadow-2xl animate-in zoom-in-95">
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-100 dark:border-zinc-800 mb-4">
+              <h3 className="font-bold text-sm text-zinc-950 dark:text-white">
+                Параметры бота «{editingCompany.name}»
+              </h3>
+              <button
+                type="button"
+                onClick={() => setEditingCompany(null)}
+                className="w-7 h-7 rounded-full bg-zinc-100 dark:bg-zinc-800 text-zinc-500 flex items-center justify-center"
+              >
+                ✕
+              </button>
+            </div>
+
+            <form onSubmit={handleSaveEditedCompany} className="space-y-3 text-xs">
+              <div>
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Название компании:
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={editingCompany.name}
+                  onChange={(e) => setEditingCompany({ ...editingCompany, name: e.target.value })}
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Город:</label>
+                  <input
+                    type="text"
+                    value={editingCompany.city}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, city: e.target.value })}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Прораб:</label>
+                  <input
+                    type="text"
+                    value={editingCompany.foremanName}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, foremanName: e.target.value })}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Телефон:</label>
+                  <input
+                    type="text"
+                    value={editingCompany.foremanPhone}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, foremanPhone: e.target.value })}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
+                  />
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">@Бота Telegram:</label>
+                  <input
+                    type="text"
+                    value={editingCompany.botUsername}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, botUsername: e.target.value })}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Статус бота:</label>
+                  <select
+                    value={editingCompany.botStatus || 'active'}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, botStatus: e.target.value as BotDeploymentStatus })}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs"
+                  >
+                    <option value="active">🟢 Активен у клиента</option>
+                    <option value="ready">🟡 Готов к продаже</option>
+                    <option value="development">⚪️ В разработке</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Цена продажи (₽):</label>
+                  <input
+                    type="number"
+                    value={editingCompany.botPrice || 45000}
+                    onChange={(e) => setEditingCompany({ ...editingCompany, botPrice: Number(e.target.value) })}
+                    className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-bold"
+                  />
+                </div>
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-zinc-100 dark:border-zinc-800">
+                <button
+                  type="button"
+                  onClick={() => setEditingCompany(null)}
+                  className="px-3.5 py-2 rounded-xl bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 font-bold"
+                >
+                  Отмена
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold"
+                >
+                  Сохранить
                 </button>
               </div>
             </form>

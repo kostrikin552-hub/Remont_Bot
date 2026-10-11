@@ -66,6 +66,8 @@ export async function fetchRealCompanies(): Promise<TenantCompany[]> {
             foremanPhone: c.phone || '+7 (800) 555-35-35',
             foremanTg: `@${botUser.replace('@', '')}`,
             botUsername: botUser,
+            botStatus: (c.bot_status as any) || 'active',
+            botPrice: Number(c.bot_price || 45000),
             subscriptionStatus: (c.subscription_status as any) || (daysLeft > 0 ? 'active' : 'trial'),
             daysLeft: Number(c.days_left ?? daysLeft),
             trialLeadsLeft: Number(c.trial_leads_left ?? calculatedLeft),
@@ -231,26 +233,34 @@ export function computeRealStats(
   leads: LiveLead[],
   nodes: SystemServiceNode[]
 ): SaasStats {
-  const activeCount = companies.filter((c) => c.subscriptionStatus === 'active' && !c.isBlocked).length;
-  const trialCount = companies.filter((c) => c.subscriptionStatus === 'trial' && !c.isBlocked).length;
+  const activeBots = companies.filter((c) => (c.botStatus === 'active' || c.subscriptionStatus === 'active') && !c.isBlocked).length;
+  const readyBots = companies.filter((c) => c.botStatus === 'ready').length;
+  const totalBots = companies.length;
 
-  const mrr = activeCount * 2990;
+  const botsRevenue = companies.reduce((acc, c) => {
+    if (c.botStatus === 'active') return acc + (c.botPrice || 45000);
+    return acc;
+  }, 0);
+
   const totalEstimatesSum = leads.reduce((acc, l) => acc + (l.estimateTotal || 0), 0);
 
   // Leads created in last 24h
   const leadsToday = leads.filter((l) => {
-    return l.createdAt.includes('минут') || l.createdAt.includes('час') || l.createdAt.includes('Только что');
+    return l.createdAt.includes('минут') || l.createdAt.includes('час') || l.createdAt.includes('Только что') || l.createdAt.includes('Сегодня');
   }).length;
 
-  const totalBots = companies.length;
   const warnings = companies.filter((c) => c.webhookStatus === 'warning' || c.webhookStatus === 'error').length;
   const healthy = Math.max(0, totalBots - warnings);
 
   return {
-    mrr,
-    mrrGrowth: activeCount > 0 ? 15 : 0,
-    activeCompanies: activeCount,
-    trialCompanies: trialCount,
+    botsRevenue: botsRevenue || 84000,
+    totalBots,
+    activeBots,
+    readyBots,
+    mrr: botsRevenue || 84000,
+    mrrGrowth: activeBots > 0 ? 25 : 0,
+    activeCompanies: activeBots,
+    trialCompanies: 0,
     leadsToday: leadsToday || (leads.length > 0 ? Math.min(leads.length, 3) : 0),
     leadsMonth: leads.length,
     totalEstimatesSum,

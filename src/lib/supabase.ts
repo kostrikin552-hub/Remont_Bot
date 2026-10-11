@@ -303,13 +303,71 @@ export async function fetchCompanyData(companyId: string): Promise<{
     }
   }
 
-  // 3. Fallback to demo companies (preserving the requested company ID)
+  // 3. Fallback to locally created bots or demo companies
+  let localCustomCompany: any = null;
+  let localCustomPricing: any = null;
+  if (typeof window !== 'undefined') {
+    try {
+      const storedCompaniesRaw = localStorage.getItem('remontsaas_real_companies');
+      if (storedCompaniesRaw) {
+        const storedCompanies = JSON.parse(storedCompaniesRaw);
+        if (Array.isArray(storedCompanies)) {
+          const match = storedCompanies.find(
+            (c: any) =>
+              c.id === companyId ||
+              (c.botUsername && c.botUsername.toLowerCase().replace('@', '') === companyId.toLowerCase().replace('@', '')) ||
+              (c.name && c.name.toLowerCase() === companyId.toLowerCase())
+          );
+          if (match) {
+            localCustomCompany = match;
+            const customPriceRaw = localStorage.getItem(`company_pricing_${match.id}`);
+            if (customPriceRaw) {
+              localCustomPricing = JSON.parse(customPriceRaw);
+            }
+          }
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }
+
   const found = DEMO_COMPANIES[companyId] || DEMO_COMPANIES[DEFAULT_COMPANY_ID];
   const isBotSlug = companyId.toLowerCase().includes('bot');
   const resolvedBot =
     detectedBot ||
+    (localCustomCompany?.botUsername ? localCustomCompany.botUsername.replace(/^@/, '') : undefined) ||
     (isBotSlug ? companyId.replace(/^@/, '') : found.company.botUsername) ||
     'remont_pro_bot';
+
+  if (localCustomCompany) {
+    return {
+      company: {
+        id: localCustomCompany.id,
+        name: localCustomCompany.name || found.company.name,
+        subtitle: localCustomCompany.subtitle || 'Индивидуальный расчет сметы ремонта',
+        city: localCustomCompany.city || found.company.city,
+        phone: localCustomCompany.foremanPhone || localCustomCompany.phone || found.company.phone,
+        statusText: 'Фиксированная цена по договору без доплат',
+        secondaryCoeff: 1.15,
+        logoLetter: (localCustomCompany.name ? localCustomCompany.name[0].toUpperCase() : 'Р'),
+        badgeText: 'PRO',
+        botUsername: resolvedBot,
+        ownerId: localCustomCompany.adminChatId,
+        adminChatId: localCustomCompany.adminChatId,
+        serviceRadius: localCustomCompany.serviceRadius,
+      },
+      pricing: localCustomPricing || {
+        cosmeticPrice: Math.round(defaultPricing.cosmeticPrice * (localCustomCompany.pricingMultiplier || 1.0)),
+        capitalPrice: Math.round(defaultPricing.capitalPrice * (localCustomCompany.pricingMultiplier || 1.0)),
+        designerPrice: Math.round(defaultPricing.designerPrice * (localCustomCompany.pricingMultiplier || 1.0)),
+        designProjectPrice: defaultPricing.designProjectPrice,
+        demolitionPrice: defaultPricing.demolitionPrice,
+        materialsPrice: defaultPricing.materialsPrice,
+      },
+      isFromSupabase: false,
+    };
+  }
 
   return {
     company: {

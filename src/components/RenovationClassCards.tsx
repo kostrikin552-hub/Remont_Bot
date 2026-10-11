@@ -29,7 +29,7 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
     <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs">
       <div className="flex items-center justify-between mb-2 px-0.5">
         <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
-          Тариф отделки
+          Класс ремонта
         </span>
         <span className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium">
           Работа под ключ
@@ -65,7 +65,7 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
                     </span>
                   ) : (
                     <span className="text-[9px] font-medium opacity-50 leading-none">
-                      {item.badge || 'Тариф'}
+                      {item.badge || 'Пакет'}
                     </span>
                   )}
                 </div>

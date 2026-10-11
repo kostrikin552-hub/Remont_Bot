@@ -1,5 +1,7 @@
 import { KeyStatus, LeadScoringGrade, PropertySubtype } from '../types';
 
+export type BotDeploymentStatus = 'active' | 'ready' | 'development';
+
 export interface TenantCompany {
   id: string;
   name: string;
@@ -8,9 +10,11 @@ export interface TenantCompany {
   foremanPhone: string;
   foremanTg: string;
   botUsername: string;
-  subscriptionStatus: 'active' | 'trial' | 'expired';
-  daysLeft: number;
-  trialLeadsLeft: number;
+  botToken?: string;
+  adminChatId?: string | number;
+  botStatus: BotDeploymentStatus;
+  botPrice: number; // Стоимость продажи бота (руб)
+  soldAt?: string;
   totalLeads: number;
   revenueEst: number;
   registeredAt: string;
@@ -19,6 +23,10 @@ export interface TenantCompany {
   webhookError?: string;
   pricingMultiplier: number;
   serviceRadius?: string; // Зона обслуживания (например "Вся Москва + 15 км от МКАД")
+  // Совместимость для плавного перехода
+  subscriptionStatus: 'active' | 'trial' | 'expired';
+  daysLeft: number;
+  trialLeadsLeft: number;
 }
 
 export interface LiveLead {
@@ -76,16 +84,21 @@ export interface GostPriceCatalogItem {
 }
 
 export interface SaasStats {
-  mrr: number;
-  mrrGrowth: number;
-  activeCompanies: number;
-  trialCompanies: number;
+  botsRevenue: number;
+  totalBots: number;
+  activeBots: number;
+  readyBots: number;
   leadsToday: number;
   leadsMonth: number;
   totalEstimatesSum: number;
   webhooksTotal: number;
   webhooksHealthy: number;
   webhooksWarning: number;
+  // Поля совместимости
+  mrr: number;
+  mrrGrowth: number;
+  activeCompanies: number;
+  trialCompanies: number;
 }
 
 // ---------------------------------------------------------------------------

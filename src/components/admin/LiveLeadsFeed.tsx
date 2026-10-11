@@ -175,17 +175,13 @@ export function LiveLeadsFeed({
             </div>
 
             <div className="pt-2 border-t border-zinc-100 dark:border-zinc-800/80 flex items-center justify-between gap-2">
-              <button
-                onClick={() => onToggleLeadLock(lead.id)}
-                className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-mono transition ${
-                  lead.isUnlocked
-                    ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
-                    : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400'
-                }`}
+              <a
+                href={`tel:${lead.phone.replace(/[^0-9+]/g, '')}`}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 text-xs font-mono font-bold transition border border-emerald-200 dark:border-emerald-800"
               >
-                {lead.isUnlocked ? <Unlock className="w-3 h-3" /> : <Lock className="w-3 h-3" />}
+                <span>📞</span>
                 <span>{lead.phone}</span>
-              </button>
+              </a>
 
               <div className="flex items-center gap-1.5">
                 {lead.telegramUsername && (
@@ -301,22 +297,14 @@ export function LiveLeadsFeed({
 
                   {/* Телефон (Locked / Unlocked) */}
                   <td className="py-3 px-3">
-                    <button
-                      onClick={() => onToggleLeadLock(lead.id)}
-                      title={lead.isUnlocked ? 'Номер открыт прорабу' : 'Номер скрыт до списания лида'}
-                      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono transition ${
-                        lead.isUnlocked
-                          ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800'
-                          : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 border border-zinc-200 dark:border-zinc-700'
-                      }`}
+                    <a
+                      href={`tel:${lead.phone.replace(/[^0-9+]/g, '')}`}
+                      title="Позвонить клиенту"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-mono font-bold bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 transition"
                     >
-                      {lead.isUnlocked ? (
-                        <Unlock className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                      ) : (
-                        <Lock className="w-3 h-3 text-zinc-400" />
-                      )}
+                      <span>📞</span>
                       <span>{lead.phone}</span>
-                    </button>
+                    </a>
                   </td>
 
                   {/* Город и Адрес */}
