@@ -153,6 +153,16 @@ def save_local_subscriptions():
 load_local_subscriptions()
 
 
+def is_valid_uuid(val: Any) -> bool:
+    if not val:
+        return False
+    try:
+        uuid.UUID(str(val).strip())
+        return True
+    except Exception:
+        return False
+
+
 def parse_iso_datetime(dt_str: Optional[str]) -> Optional[datetime]:
     if not dt_str:
         return None
@@ -361,15 +371,20 @@ def check_and_consume_lead_access(
         if supabase_client:
             try:
                 target_comp_id = (company.get("id") or company.get("uuid")) if company else None
-                if target_comp_id:
+                if target_comp_id and is_valid_uuid(target_comp_id):
                     supabase_client.table("companies").update({
                         "trial_leads_used": new_used
                     }).eq("id", str(target_comp_id)).execute()
                 elif company_identifier:
                     clean_id = str(company_identifier).replace("@", "")
-                    supabase_client.table("companies").update({
-                        "trial_leads_used": new_used
-                    }).or_(f"bot_username.eq.{clean_id},id.eq.{clean_id}").execute()
+                    if is_valid_uuid(clean_id):
+                        supabase_client.table("companies").update({
+                            "trial_leads_used": new_used
+                        }).eq("id", clean_id).execute()
+                    else:
+                        supabase_client.table("companies").update({
+                            "trial_leads_used": new_used
+                        }).eq("bot_username", clean_id.lower()).execute()
             except Exception as up_err:
                 logger.debug(f"Ошибка сохранения trial_leads_used в Supabase: {up_err}")
 
@@ -639,10 +654,18 @@ async def activate_subscription_for_company(
             res = (
                 supabase_client.table("companies")
                 .select("*")
-                .or_(f"bot_username.eq.{company_id.lower()},id.eq.{company_id}")
+                .eq("bot_username", company_id.lower())
                 .maybe_single()
                 .execute()
             )
+            if (not res or not res.data) and is_valid_uuid(company_id):
+                res = (
+                    supabase_client.table("companies")
+                    .select("*")
+                    .eq("id", company_id)
+                    .maybe_single()
+                    .execute()
+                )
             if res and res.data:
                 comp_uuid = str(res.data.get("id"))
                 company_name = res.data.get("name") or company_name
@@ -686,13 +709,22 @@ async def activate_subscription_for_company(
     referred_by = res.data.get("referred_by") if (res and res.data) else None
     if referred_by and supabase_client:
         try:
-            ref_res = (
-                supabase_client.table("companies")
-                .select("*")
-                .or_(f"id.eq.{referred_by},admin_chat_id.eq.{referred_by}")
-                .maybe_single()
-                .execute()
-            )
+            if is_valid_uuid(referred_by):
+                ref_res = (
+                    supabase_client.table("companies")
+                    .select("*")
+                    .eq("id", str(referred_by))
+                    .maybe_single()
+                    .execute()
+                )
+            else:
+                ref_res = (
+                    supabase_client.table("companies")
+                    .select("*")
+                    .eq("admin_chat_id", str(referred_by))
+                    .maybe_single()
+                    .execute()
+                )
             if ref_res and ref_res.data:
                 ref_comp = ref_res.data
                 ref_comp_id = str(ref_comp.get("id"))

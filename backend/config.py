@@ -68,6 +68,10 @@ MINI_APP_URL: str = normalize_url(
     os.getenv("MINI_APP_URL", ""), "https://remont-backend-exr3.onrender.com"
 )
 
+WEBAPP_URL: str = normalize_url(
+    os.getenv("WEBAPP_URL") or os.getenv("MINI_APP_URL", ""), "https://remont-backend-exr3.onrender.com"
+)
+
 # Видеоинструкция BotFather
 BOTFATHER_GUIDE_VIDEO_ID: str = os.getenv("BOTFATHER_GUIDE_VIDEO_ID", "").strip()
 

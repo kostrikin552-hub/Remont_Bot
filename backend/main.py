@@ -132,6 +132,7 @@ try:
         MINI_APP_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         SUPABASE_URL,
+        WEBAPP_URL,
     )
 except ImportError:
     from config import (
@@ -141,6 +142,7 @@ except ImportError:
         MINI_APP_URL,
         SUPABASE_SERVICE_ROLE_KEY,
         SUPABASE_URL,
+        WEBAPP_URL,
     )
 
 try:
@@ -814,13 +816,23 @@ async def _finish_turnkey_bot_creation(msg: Message, state: FSMContext, deal_amo
     company_uuid = None
     if supabase_client:
         try:
+            # Ищем сначала по bot_username
             existing = (
                 supabase_client.table("companies")
                 .select("id")
-                .or_(f"bot_username.eq.{bot_username},id.eq.{slug}")
+                .eq("bot_username", bot_username)
                 .maybe_single()
                 .execute()
             )
+            # Если не найден и slug является валидным UUID, проверяем по id
+            if (not existing or not existing.data) and is_valid_uuid(slug):
+                existing = (
+                    supabase_client.table("companies")
+                    .select("id")
+                    .eq("id", slug)
+                    .maybe_single()
+                    .execute()
+                )
             company_row = {
                 "name": company_name,
                 "city": city,
@@ -1094,7 +1106,13 @@ async def master_cb_apply_k(cb: CallbackQuery):
                 COMPANIES_CACHE[company.get("bot_username").lower()] = company
         if supabase_client:
             try:
-                supabase_client.table("companies").update({"price_multiplier": new_k}).or_(f"id.eq.{slug},bot_username.eq.{slug}").execute()
+                comp_uuid = str(company.get("uuid") or company.get("id")) if company else None
+                if comp_uuid and is_valid_uuid(comp_uuid):
+                    supabase_client.table("companies").update({"price_multiplier": new_k}).eq("id", comp_uuid).execute()
+                elif is_valid_uuid(slug):
+                    supabase_client.table("companies").update({"price_multiplier": new_k}).eq("id", slug).execute()
+                else:
+                    supabase_client.table("companies").update({"price_multiplier": new_k}).eq("bot_username", slug.lower()).execute()
             except Exception as e:
                 logger.error(f"Ошибка обновления price_multiplier: {e}")
 
@@ -1381,6 +1399,17 @@ async def lifespan(app: FastAPI):
                 drop_pending_updates=True,
                 allowed_updates=["message", "edited_message", "callback_query"],
             )
+            # Регистрируем меню быстрых команд в Telegram (кнопка Menu в левом нижнем углу)
+            from aiogram.types import BotCommand
+            await master_bot.set_my_commands([
+                BotCommand(command="start", description="🏠 Главное меню мобильной консоли"),
+                BotCommand(command="new_client", description="➕ Создать бота под ключ за 3 мин"),
+                BotCommand(command="clients", description="📋 Список клиентов и множители k"),
+                BotCommand(command="pricing", description="⚙️ Калибровка цен и 35 услуг"),
+                BotCommand(command="stats", description="📊 Финансы, продажи и лиды"),
+                BotCommand(command="admin", description="🎛 Открыть Web-админку со смартфона"),
+                BotCommand(command="cancel", description="❌ Сброс текущего шага"),
+            ])
             logger.info(f"Вебхук Мастер-бота установлен на {master_webhook_url}")
         except Exception as e:
             logger.warning(f"Не удалось установить вебхук для Мастер-бота: {e}")
@@ -1684,33 +1713,9 @@ async def client_bot_webhook(company_id: str, request: Request):
     admin_chat_id = company_data.get("admin_chat_id")
     is_admin = bool(admin_chat_id and chat_id == admin_chat_id)
 
-    # 2. Проверяем подписку компании
-    sub_info = get_company_subscription(company_id, company_data, supabase_client)
-    is_active = sub_info.get("is_active", False)
-    until = sub_info.get("subscription_until")
-    days_left = sub_info.get("days_left", 0)
-
-    # Ссылки на 3 тарифа
+    # 2. B2B Внедрение под ключ: Лицензия Lifetime по умолчанию для всех ботов компании
     comp_name = company_data.get("name") or company_id
-    _, url_1m = create_payment_url(company_id, comp_name, chat_id, "1m")
-    _, url_3m = create_payment_url(company_id, comp_name, chat_id, "3m")
-    _, url_1y = create_payment_url(company_id, comp_name, chat_id, "1y")
-
-    offer_web_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
-    sub_kb_rows = [
-        [{"text": "💳 1 месяц — 2 990 ₽", "url": url_1m}],
-        [{"text": "🔥 3 месяца — 6 990 ₽ (-22%)", "url": url_3m}],
-        [{"text": "💎 1 год — 22 990 ₽ (Экономия 12 890 ₽)", "url": url_1y}],
-        [{"text": "📄 Публичная оферта", "url": offer_web_url}],
-    ]
-    auto_renew = sub_info.get("auto_renew", True)
-    if is_active:
-        if auto_renew:
-            sub_kb_rows.append([{"text": "❌ Отменить автопродление в 1 клик", "callback_data": "btn_cancel_sub"}])
-        else:
-            sub_kb_rows.append([{"text": "🔄 Возобновить автопродление", "callback_data": "btn_resume_sub"}])
-
-    subscription_keyboard = {"inline_keyboard": sub_kb_rows}
+    offer_web_url = f"{BASE_WEBHOOK_URL}/offer" if BASE_WEBHOOK_URL else "https://t.me/kostrikin552"
 
     # Команда /offer и /terms в боте компании
     if text in ["/offer", "/terms"]:
@@ -1735,7 +1740,7 @@ async def client_bot_webhook(company_id: str, request: Request):
 
     # Команда /privacy и /policy в боте компании
     if text in ["/privacy", "/policy"]:
-        privacy_web_url = f"{BASE_WEBHOOK_URL}/privacy" if BASE_WEBHOOK_URL else "https://t.me/cuberlife_bot"
+        privacy_web_url = f"{BASE_WEBHOOK_URL}/privacy" if BASE_WEBHOOK_URL else "https://t.me/kostrikin552"
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
                 await client.post(
@@ -1755,107 +1760,16 @@ async def client_bot_webhook(company_id: str, request: Request):
             logger.error(f"Ошибка отправки /privacy в боте {company_id}: {e}")
         return Response(status_code=status.HTTP_200_OK)
 
-    # Команда /cancel_subscription (отмена подписки в 1 клик)
-    if text in ["/cancel_subscription", "/cancel_sub"]:
-        cancel_auto_renew(company_id, supabase_client)
-        sub_info = get_company_subscription(company_id, company_data, supabase_client)
-        until = sub_info.get("subscription_until")
-        until_str = until.strftime("%d.%m.%Y") if until else "конца оплаченного периода"
-        cancel_msg = (
-            "✅ <b>Автопродление подписки успешно отменено в 1 клик!</b>\n\n"
-            "• Никаких дальнейших автоматических списаний производиться не будет.\n"
-            f"• Доступ ко всем возможностям бота <b>сохраняется до {until_str}</b>.\n\n"
-            "ℹ️ <i>Согласно п. 3.2 Публичной оферты, услуга считается оказанной в момент предоставления доступа к функционалу платформы.</i>"
-        )
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                    json={
-                        "chat_id": chat_id,
-                        "text": cancel_msg,
-                        "parse_mode": "HTML",
-                        "reply_markup": {
-                            "inline_keyboard": [
-                                [{"text": "🔄 Возобновить автопродление", "callback_data": "btn_resume_sub"}],
-                                [{"text": "📄 Публичная оферта", "url": offer_web_url}],
-                            ]
-                        },
-                    },
-                )
-        except Exception as e:
-            logger.error(f"Ошибка отправки /cancel_subscription в боте {company_id}: {e}")
-        return Response(status_code=status.HTTP_200_OK)
-
-    # Команда /test_pay (тестирование оплаты для прораба/админа)
-    if text.startswith("/test_pay"):
-        args = text.split()[1:]
-        chosen_plan = args[0].lower() if args and args[0].lower() in SUBSCRIPTION_PLANS else "1m"
-        plan_info = get_plan(chosen_plan)
-
-        res = await activate_subscription_for_company(
-            company_id=company_id,
-            supabase_client=supabase_client,
-            master_bot=master_bot,
-            admin_chat_id=chat_id,
-            bot_token=bot_token,
-            days=plan_info["duration_days"],
-            plan_id=chosen_plan,
-        )
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                    json={
-                        "chat_id": chat_id,
-                        "text": (
-                            f"🧪 <b>[ТЕСТОВЫЙ РЕЖИМ ОПЛАТЫ]</b>\n"
-                            f"Подписка успешно активирована на <b>{plan_info['name']}</b> (до {res.get('subscription_until')})!\n"
-                            f"🚀 <b>Бот возобновил работу и принимает заявки!</b>\n"
-                            f"🔓 Разблокировано лидов: {res.get('unlocked_leads', 0)}."
-                        ),
-                        "parse_mode": "HTML",
-                    },
-                )
-        except Exception as e:
-            logger.error(f"Ошибка отправки /test_pay в боте {company_id}: {e}")
-        return Response(status_code=status.HTTP_200_OK)
-
-    # Команда /subscription (кабинет подписки)
-    if text in ["/subscription", "/sub", "/tariff", "/tariffs", "/pay"]:
-        trial_used = sub_info.get("trial_leads_used", 0)
-        total_trial = sub_info.get("total_trial_limit", 3)
-        trial_left = max(0, total_trial - trial_used)
-        if is_active and until:
-            until_dt = until.replace(tzinfo=timezone.utc) if until.tzinfo is None else until
-            status_desc = (
-                f"🟢 <b>Статус: Подписка активна</b>\n"
-                f"📅 Срок действия: до <b>{until_dt.strftime('%d.%m.%Y')}</b> (осталось {days_left} дн.)\n"
-                f"🚀 <b>Приём заявок:</b> Без ограничений (все контакты клиентов открыты)."
-            )
-        elif trial_used < total_trial:
-            status_desc = (
-                f"🎁 <b>Статус: Бесплатный триал (Usage-Based Freemium)</b>\n"
-                f"📊 <b>Использовано заявок:</b> {trial_used} из {total_trial}\n"
-                f"⚡️ <b>Осталось полных бесплатных заявок:</b> {trial_left}\n"
-                f"💡 <i>Первые {total_trial} заявки приходят с полными номерами телефонов и точными адресами. "
-                f"Заявка {total_trial + 1} и далее поступает с замаскированным телефоном и адресом до оплаты подписки.</i>"
-            )
-        else:
-            status_desc = (
-                f"🔒 <b>Статус: {total_trial} бесплатных заявок триала исчерпаны!</b>\n"
-                "⚠️ Новые заявки поступают с замаскированными контактами и адресом (+7 (999) ***-**-42).\n"
-                "Для снятия маски и получения прямых контактов клиентов выберите тариф:"
-            )
-
-        sub_text = (
+    # Запросы статуса подписки в боте компании (/subscription, /sub, /tariff, /pay):
+    # Теперь подтверждают статус вечной B2B лицензии Lifetime без ограничений
+    if text in ["/subscription", "/sub", "/tariff", "/tariffs", "/pay", "/cancel_subscription", "/cancel_sub"]:
+        lifetime_info_text = (
             f"🏢 <b>Компания:</b> {comp_name}\n\n"
-            f"{status_desc}\n\n"
-            "<b>Тарифные планы:</b>\n"
-            "• <b>1 месяц</b> — 2 990 ₽\n"
-            "• <b>3 месяца</b> — 7 990 ₽ (-11%)\n"
-            "• <b>1 год</b> — 24 990 ₽ (-30%)\n\n"
-            "Выберите тариф для активации безлимитного доступа:"
+            "🟢 <b>Статус лицензии: ПОЖИЗНЕННЫЙ (Lifetime PRO)</b>\n"
+            "♾ <b>Срок действия:</b> Без ограничений\n"
+            "🚀 <b>Приём заявок:</b> Неограниченно, 100% открытые контакты клиентов.\n"
+            "📐 <b>Сметный калькулятор:</b> Активен 24/7\n\n"
+            "<i>(Решение развёрнуто под ключ. Ежемесячная абонентская плата отсутствует).</i>"
         )
         try:
             async with httpx.AsyncClient(timeout=10.0) as client:
@@ -1863,48 +1777,16 @@ async def client_bot_webhook(company_id: str, request: Request):
                     f"https://api.telegram.org/bot{bot_token}/sendMessage",
                     json={
                         "chat_id": chat_id,
-                        "text": sub_text,
+                        "text": lifetime_info_text,
                         "parse_mode": "HTML",
-                        "reply_markup": subscription_keyboard,
                     },
                 )
         except Exception as e:
-            logger.error(f"Ошибка отправки /subscription в боте {company_id}: {e}")
-        return Response(status_code=status.HTTP_200_OK)
-
-    # Команда /pay
-    if text.startswith("/pay"):
-        pay_text = (
-            f"💳 <b>Оплата подписки РемонтПро</b>\n\n"
-            f"🏢 Компания: <b>{comp_name}</b>\n"
-            "Выберите желаемый период подписки:\n\n"
-            "• <b>1 месяц</b> — 2 990 ₽\n"
-            "• <b>3 месяца</b> — 7 990 ₽ (скидка 11%)\n"
-            "• <b>1 год</b> — 24 990 ₽ (скидка 30%)\n\n"
-            "После оплаты все заблокированные заявки мгновенно открываются."
-        )
-        try:
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                await client.post(
-                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
-                    json={
-                        "chat_id": chat_id,
-                        "text": pay_text,
-                        "parse_mode": "HTML",
-                        "reply_markup": subscription_keyboard,
-                    },
-                )
-        except Exception as e:
-            logger.error(f"Ошибка отправки /pay в боте {company_id}: {e}")
+            logger.error(f"Ошибка отправки статуса лицензии в боте {company_id}: {e}")
         return Response(status_code=status.HTTP_200_OK)
 
     # -----------------------------------------------------------------------
-    # Usage-Based Freemium: Клиенты (B2C) ВСЕГДА имеют доступ к калькулятору и смете!
-    # Их опыт не ломается, заявки успешно сохраняются и рассчитываются.
-    # -----------------------------------------------------------------------
-
-    # -----------------------------------------------------------------------
-    # ЕСЛИ ПОДПИСКА АКТИВНА: штатная работа бота для клиентов ЧЕРЕЗ КНОПКИ
+    # Штатная работа бота для клиентов и прорабов ЧЕРЕЗ КНОПКИ
     # -----------------------------------------------------------------------
     bot_uname = company_data.get("bot_username") or company_id
     app_url = f"{MINI_APP_URL}?company_id={company_id}&bot={bot_uname}"
@@ -2074,30 +1956,11 @@ async def client_bot_webhook(company_id: str, request: Request):
                     [{"text": "⚙️ Как настроить свои цены", "callback_data": "master_help_pricing"}],
                 ]
             }
-        elif cb_data == "btn_cancel_sub":
-            cancel_auto_renew(company_id, supabase_client)
-            sub_info = get_company_subscription(company_id, company_data, supabase_client)
-            until = sub_info.get("subscription_until")
-            until_str = until.strftime("%d.%m.%Y") if until else "конца оплаченного периода"
-            response_text = (
-                "✅ <b>Автопродление подписки отключено в 1 клик</b>\n\n"
-                "• Следующих автоматических списаний не будет.\n"
-                f"• Ваш бот продолжает работать в полном объёме <b>до {until_str}</b>.\n\n"
-                "ℹ️ <i>Согласно п. 3.2 Публичной оферты, услуга считается оказанной в момент предоставления доступа к функционалу платформы.</i>"
-            )
+        elif cb_data == "btn_cancel_sub" or cb_data == "btn_resume_sub":
+            response_text = "🟢 <b>Лицензия компании: Lifetime (Пожизненный доступ).</b>\n\nПодписка отключена, бот работает постоянно."
             cat_back_kb = {
                 "inline_keyboard": [
-                    [{"text": "🔄 Возобновить автопродление", "callback_data": "btn_resume_sub"}],
-                    [{"text": "📄 Публичная оферта", "url": offer_web_url}],
-                ]
-            }
-        elif cb_data == "btn_resume_sub":
-            resume_auto_renew(company_id, supabase_client)
-            response_text = "🔄 <b>Автопродление успешно включено.</b> Списание произойдёт в день окончания текущего периода."
-            cat_back_kb = {
-                "inline_keyboard": [
-                    [{"text": "❌ Отменить автопродление в 1 клик", "callback_data": "btn_cancel_sub"}],
-                    [{"text": "📄 Публичная оферта", "url": offer_web_url}],
+                    [{"text": "📱 Открыть калькулятор сметы", "web_app": {"url": app_url}}],
                 ]
             }
 
