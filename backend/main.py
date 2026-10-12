@@ -833,18 +833,22 @@ async def _finish_turnkey_bot_creation(msg: Message, state: FSMContext, deal_amo
                     .maybe_single()
                     .execute()
                 )
+            admin_chat_id_val = None
+            if isinstance(foreman_tg, int):
+                admin_chat_id_val = foreman_tg
+            elif isinstance(foreman_tg, str) and foreman_tg.strip().isdigit():
+                admin_chat_id_val = int(foreman_tg.strip())
+
             company_row = {
                 "name": company_name,
                 "city": city,
                 "phone": foreman_phone,
-                "admin_chat_id": foreman_tg if isinstance(foreman_tg, int) else None,
+                "admin_chat_id": admin_chat_id_val,
                 "bot_token_encrypted": bot_token,
                 "bot_username": bot_username,
                 "is_active": True,
-                "subscription_status": "lifetime",
-                "trial_leads_used": 0,
-                "price_multiplier": multiplier,
-                "owner_tg_username": str(foreman_tg),
+                "subscription_status": "active",
+                "current_plan_id": "1y",
             }
             if existing and existing.data:
                 company_uuid = str(existing.data.get("id"))
@@ -853,6 +857,23 @@ async def _finish_turnkey_bot_creation(msg: Message, state: FSMContext, deal_amo
                 ins = supabase_client.table("companies").insert(company_row).execute()
                 if ins.data and len(ins.data) > 0:
                     company_uuid = str(ins.data[0].get("id"))
+
+            if company_uuid and is_valid_uuid(company_uuid):
+                try:
+                    p_row = {
+                        "company_id": company_uuid,
+                        "price_cosmetic": round(4500 * multiplier),
+                        "price_capital": round(8500 * multiplier),
+                        "price_designer": round(15000 * multiplier),
+                        "coef_secondary": 1.15,
+                        "price_design_m2": 2000,
+                        "price_demolition_m2": 1200,
+                        "price_materials_m2": 3500,
+                    }
+                    supabase_client.table("pricing_rules").upsert(p_row, on_conflict="company_id").execute()
+                except Exception as pr_err:
+                    logger.debug(f"Ошибка сохранения pricing_rules для компании {bot_username}: {pr_err}")
+
             logger.info(f"Компания {bot_username} успешно сохранена в Supabase (UUID: {company_uuid})")
         except Exception as e:
             logger.error(f"Ошибка сохранения компании в Supabase: {e}")
@@ -955,6 +976,7 @@ async def _finish_turnkey_bot_creation(msg: Message, state: FSMContext, deal_amo
         "🔗 <b>ГОТОВЫЕ ССЫЛКИ ДЛЯ ПРОВЕРКИ:</b>\n"
         f"• <b>Mini App (Калькулятор):</b>\n<code>{mini_app_url}</code>\n\n"
         f"• <b>Бот для рекламы и Авито:</b>\nhttps://t.me/{bot_username}\n\n"
+        f"⚠️ <b>ВАЖНО:</b> Прораб должен открыть бота https://t.me/{bot_username} и нажать <b>/start</b>, чтобы Telegram разрешил боту отправлять ему уведомления и PDF-сметы!\n\n"
         "✅ <i>Статус: Lifetime без ограничений. Лиды летят сразу открытыми.</i>"
     )
 
@@ -1031,7 +1053,7 @@ async def master_list_clients(event: Any):
         city = c.get("city") or "РФ"
         k_val = c.get("price_multiplier") or 1.0
         phone = c.get("phone") or "—"
-        admin_tg = c.get("admin_chat_id") or c.get("owner_tg_username") or "—"
+        admin_tg = c.get("admin_chat_id") or "—"
         bp_approx = int(float(k_val) * 10000)
         mini_app_url = f"{WEBAPP_URL}?company_id={slug}&bot={uname}"
 
@@ -1107,14 +1129,15 @@ async def master_cb_apply_k(cb: CallbackQuery):
         if supabase_client:
             try:
                 comp_uuid = str(company.get("uuid") or company.get("id")) if company else None
-                if comp_uuid and is_valid_uuid(comp_uuid):
-                    supabase_client.table("companies").update({"price_multiplier": new_k}).eq("id", comp_uuid).execute()
-                elif is_valid_uuid(slug):
-                    supabase_client.table("companies").update({"price_multiplier": new_k}).eq("id", slug).execute()
-                else:
-                    supabase_client.table("companies").update({"price_multiplier": new_k}).eq("bot_username", slug.lower()).execute()
+                target_uuid = comp_uuid if (comp_uuid and is_valid_uuid(comp_uuid)) else (slug if is_valid_uuid(slug) else None)
+                if target_uuid:
+                    supabase_client.table("pricing_rules").update({
+                        "price_cosmetic": round(4500 * new_k),
+                        "price_capital": round(8500 * new_k),
+                        "price_designer": round(15000 * new_k),
+                    }).eq("company_id", target_uuid).execute()
             except Exception as e:
-                logger.error(f"Ошибка обновления price_multiplier: {e}")
+                logger.debug(f"Обновление pricing_rules: {e}")
 
         await cb.answer(f"✅ Новый множитель k={new_k} сохранён!", show_alert=True)
         await master_list_clients(cb)
@@ -1196,11 +1219,11 @@ async def master_cmd_stats(event: Any):
     total_est_volume = 0
     if supabase_client:
         try:
-            l_res = supabase_client.table("leads").select("total_base_cost, min_cost, max_cost").execute()
+            l_res = supabase_client.table("leads").select("min_cost, max_cost").execute()
             if l_res and l_res.data:
                 total_leads = len(l_res.data)
                 for row in l_res.data:
-                    c_val = row.get("total_base_cost") or row.get("max_cost") or row.get("min_cost") or 0
+                    c_val = row.get("max_cost") or row.get("min_cost") or 0
                     try:
                         total_est_volume += float(c_val)
                     except Exception:
@@ -2698,6 +2721,12 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
                             delivered = True
                             break
                         else:
+                            if "chat not found" in res.text or "can't initiate conversation" in res.text or "bot was blocked" in res.text:
+                                logger.info(
+                                    f"Чат {admin_chat_id} не активирован в {target_name} (прораб ещё не нажал /start в боте)"
+                                )
+                                continue
+
                             logger.warning(
                                 f"Ошибка отправки через {target_name} ({res.status_code}: {res.text}), пробуем plain-text fallback..."
                             )

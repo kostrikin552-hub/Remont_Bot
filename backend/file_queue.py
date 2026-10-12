@@ -199,9 +199,18 @@ class FileGenerationQueue:
                                 delivered = True
                                 break
                             else:
-                                logger.warning(
-                                    f"Не удалось отправить PDF через {target_name}: {doc_res.status_code} {doc_res.text}"
-                                )
+                                if "chat not found" in doc_res.text:
+                                    logger.info(
+                                        f"Чат {admin_chat_id} не найден ботом {target_name} (прораб ещё не нажал /start в этом боте)."
+                                    )
+                                elif "can't initiate conversation" in doc_res.text:
+                                    logger.info(
+                                        f"Бот {target_name} не может первым написать прорабу {admin_chat_id} (требуется нажать /start)."
+                                    )
+                                else:
+                                    logger.warning(
+                                        f"Не удалось отправить PDF через {target_name}: {doc_res.status_code} {doc_res.text}"
+                                    )
                         except Exception as send_err:
                             logger.error(
                                 f"Ошибка отправки PDF через {target_name} в Telegram: {send_err}"
