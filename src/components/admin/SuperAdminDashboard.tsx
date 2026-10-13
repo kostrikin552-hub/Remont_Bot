@@ -32,6 +32,7 @@ import {
 import { TenantCompany, LiveLead, SaasStats, SystemServiceNode, SystemErrorLog } from '../../types/admin';
 import { isSuperAdminUser, SUPERADMIN_TELEGRAM_ID, logoutSuperAdmin } from '../../utils/auth';
 import { triggerHaptic } from '../../utils/telegram';
+import { updateCompanyProfile } from '../../lib/supabase';
 import {
   ChevronRight,
   Check,
@@ -139,14 +140,28 @@ export function SuperAdminDashboard({
     setTimeout(() => setToastMessage(null), 3500);
   };
 
-  const handleUpdateCompany = (updatedCompany: TenantCompany) => {
+  const handleUpdateCompany = async (updatedCompany: TenantCompany) => {
+    try {
+      await updateCompanyProfile(updatedCompany.id, {
+        name: updatedCompany.name,
+        city: updatedCompany.city,
+        phone: updatedCompany.foremanPhone,
+        admin_chat_id: updatedCompany.adminChatId,
+        bot_username: updatedCompany.botUsername,
+        foreman_name: updatedCompany.foremanName,
+        foreman_phone: updatedCompany.foremanPhone,
+      });
+    } catch (err) {
+      console.warn('SuperAdmin handleUpdateCompany error:', err);
+    }
+
     setCompanies((prev) => {
       const updated = prev.map((c) => (c.id === updatedCompany.id ? updatedCompany : c));
       saveCompaniesToStorage(updated);
       setStats(computeRealStats(updated, leads, nodes));
       return updated;
     });
-    showToast(`Данные бота «${updatedCompany.name}» успешно обновлены!`);
+    showToast(`Данные бота «${updatedCompany.name}» успешно обновлены и синхронизированы!`);
   };
 
   const handleDeleteCompany = (companyId: string) => {

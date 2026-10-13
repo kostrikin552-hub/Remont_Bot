@@ -406,6 +406,10 @@ class CreateTurnkeyBotFSM(StatesGroup):
     deal_amount = State()    # 8. Стоимость продажи бота
 
 
+class ReassignForemanFSM(StatesGroup):
+    waiting_new_foreman_id = State()  # Ввод нового числового Telegram ID прораба
+
+
 # Инициализация Мастер-бота платформы (aiogram 3)
 master_router = Router()
 master_dp = Dispatcher(storage=MemoryStorage())
@@ -1145,13 +1149,133 @@ async def master_list_clients(event: Any):
         ik = InlineKeyboardMarkup(
             inline_keyboard=[
                 [
+                    InlineKeyboardButton(text="👤 Сменить ID прораба", callback_data=f"reassign_{slug}"),
                     InlineKeyboardButton(text="✏️ Изменить k", callback_data=f"edit_k_{slug}"),
+                ],
+                [
                     InlineKeyboardButton(text="📱 Mini App", url=mini_app_url),
                     InlineKeyboardButton(text="🚀 Бот в TG", url=f"https://t.me/{uname}"),
-                ]
+                ],
             ]
         )
         await msg.answer(card, reply_markup=ik, parse_mode=ParseMode.HTML, disable_web_page_preview=True)
+
+
+@master_router.callback_query(F.data.startswith("reassign_"))
+async def master_cb_reassign_bot(cb: CallbackQuery, state: FSMContext):
+    """Старт процесса переоформления бота на новый Telegram ID прораба"""
+    if not is_superadmin(cb.from_user.id):
+        return
+    await cb.answer()
+    slug = cb.data.replace("reassign_", "").strip()
+    company = find_company(slug) or {}
+    comp_name = company.get("name") or slug
+    uname = (company.get("bot_username") or slug).replace("@", "")
+    current_admin = company.get("admin_chat_id") or "—"
+
+    await state.clear()
+    await state.set_state(ReassignForemanFSM.waiting_new_foreman_id)
+    await state.update_data(target_slug=slug, bot_uname=uname, comp_name=comp_name)
+
+    text = (
+        f"👤 <b>ПЕРЕОФОРМЛЕНИЕ БОТА НА ДРУГОГО ПРОРАБА</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏢 <b>Компания:</b> {html.escape(comp_name)}\n"
+        f"🤖 <b>Бот:</b> @{uname}\n"
+        f"📍 <b>Текущий Telegram ID:</b> <code>{current_admin}</code>\n\n"
+        "👉 <b>Введите новый числовой Telegram ID прораба</b>\n"
+        "<i>(Только цифры, например: <code>5629144056</code> или <code>8602664076</code>. Узнать свой ID можно в @userinfobot):</i>"
+    )
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[[InlineKeyboardButton(text="❌ Отменить", callback_data="btn_cancel_fsm")]]
+    )
+    await cb.message.answer(text, reply_markup=cancel_kb, parse_mode=ParseMode.HTML)
+
+
+@master_router.message(StateFilter(ReassignForemanFSM.waiting_new_foreman_id), F.text)
+async def master_fsm_reassign_foreman_save(message: Message, state: FSMContext):
+    """Сохранение нового Telegram ID прораба в Supabase и кэше"""
+    if not is_superadmin(message.from_user.id):
+        return
+
+    raw = message.text.strip()
+    digits = re.sub(r"[^\d]", "", raw)
+    if not digits:
+        await message.answer("⚠️ Неверный формат ID. Отправьте числовой Telegram ID прораба (только цифры):")
+        return
+
+    new_chat_id = int(digits)
+    data = await state.get_data()
+    slug = data.get("target_slug") or ""
+    uname = data.get("bot_uname") or ""
+    comp_name = data.get("comp_name") or "Ремонт"
+
+    company = find_company(slug) or {}
+    comp_uuid = str(company.get("uuid") or company.get("id")) if company else None
+
+    # Обновляем в Supabase
+    db_updated = False
+    if supabase_client:
+        try:
+            if comp_uuid and is_valid_uuid(comp_uuid):
+                supabase_client.table("companies").update({"admin_chat_id": new_chat_id}).eq("id", comp_uuid).execute()
+                db_updated = True
+            elif uname:
+                supabase_client.table("companies").update({"admin_chat_id": new_chat_id}).eq("bot_username", uname).execute()
+                db_updated = True
+        except Exception as e:
+            logger.error(f"Ошибка смены admin_chat_id в Supabase: {e}")
+
+    # Обновляем в оперативном кэше
+    if company:
+        company["admin_chat_id"] = new_chat_id
+        company["owner_id"] = new_chat_id
+    for key in [slug, uname, comp_uuid]:
+        if key and key in COMPANIES_CACHE:
+            COMPANIES_CACHE[key]["admin_chat_id"] = new_chat_id
+            COMPANIES_CACHE[key]["owner_id"] = new_chat_id
+
+    # Приветствие новому прорабу от имени бота компании
+    bot_token = company.get("bot_token") if company else None
+    notified_new_owner = False
+    if bot_token and new_chat_id != SUPERADMIN_ID:
+        try:
+            async with httpx.AsyncClient(timeout=8.0) as client:
+                greeting = (
+                    f"👋 <b>Здравствуйте, {html.escape(comp_name)}!</b>\n\n"
+                    f"Бот-калькулятор <b>@{uname}</b> успешно переоформлен на ваш Telegram аккаунт!\n\n"
+                    "Все новые заявки заказчиков на замер, расчеты и сметы теперь будут приходить в этот чат с открытыми номерами телефонов.\n\n"
+                    f"🔗 <b>Ссылка на вашего бота для клиентов:</b>\n"
+                    f"https://t.me/{uname}"
+                )
+                r = await client.post(
+                    f"https://api.telegram.org/bot{bot_token}/sendMessage",
+                    json={"chat_id": new_chat_id, "text": greeting, "parse_mode": "HTML"},
+                )
+                if r.status_code == 200:
+                    notified_new_owner = True
+        except Exception as e:
+            logger.debug(f"Не удалось отправить приветствие новому прорабу: {e}")
+
+    await state.clear()
+
+    report = (
+        "✅ <b>БОТ УСПЕШНО ПЕРЕОФОРМЛЕН!</b>\n"
+        "━━━━━━━━━━━━━━━━━━━━\n"
+        f"🏢 <b>Компания:</b> {html.escape(comp_name)}\n"
+        f"🤖 <b>Бот:</b> @{uname}\n"
+        f"👤 <b>Новый ответственный прораб:</b> ID <code>{new_chat_id}</code>\n"
+        f"💾 <b>База данных (Supabase):</b> {'🟢 Обновлено' if db_updated else '⚠️ Кэш обновлен'}\n"
+        f"📨 <b>Уведомление в TG:</b> {'🟢 Отправлено' if notified_new_owner else '⚠️ Прораб должен нажать /start в @' + uname}\n\n"
+        "<i>Все последующие входящие заявки клиентов будут автоматически поступать на этот ID.</i>"
+    )
+    ik = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text="📋 Список всех ботов", callback_data="btn_master_clients")],
+            [InlineKeyboardButton(text="🚀 Открыть бота в TG", url=f"https://t.me/{uname}")],
+        ]
+    )
+    await message.answer(report, reply_markup=ik, parse_mode=ParseMode.HTML)
 
 
 @master_router.callback_query(F.data.startswith("edit_k_"))
@@ -2334,6 +2458,88 @@ async def get_company_endpoint(company_id: str):
 
 
 # ---------------------------------------------------------------------------
+# Обновление параметров компании: PATCH /api/companies/{company_id}
+# ---------------------------------------------------------------------------
+class UpdateCompanyRequest(BaseModel):
+    name: Optional[str] = None
+    city: Optional[str] = None
+    phone: Optional[str] = None
+    admin_chat_id: Optional[Union[int, str]] = None
+    bot_username: Optional[str] = None
+    bot_status: Optional[str] = None
+    bot_price: Optional[float] = None
+    foreman_name: Optional[str] = None
+    foreman_phone: Optional[str] = None
+
+
+@app.patch("/api/companies/{company_id}")
+async def update_company_endpoint(company_id: str, req: UpdateCompanyRequest):
+    """
+    Обновляет параметры компании (Telegram ID прораба, телефон, город, название)
+    в Supabase и оперативном кэше.
+    """
+    company = find_company(company_id) or {}
+    comp_uuid = str(company.get("uuid") or company.get("id")) if company else company_id
+
+    update_fields = {}
+    if req.name is not None and req.name.strip():
+        update_fields["name"] = req.name.strip()
+    if req.city is not None and req.city.strip():
+        update_fields["city"] = req.city.strip()
+    if req.phone is not None and req.phone.strip():
+        update_fields["phone"] = req.phone.strip()
+    elif req.foreman_phone is not None and req.foreman_phone.strip():
+        update_fields["phone"] = req.foreman_phone.strip()
+
+    if req.admin_chat_id is not None:
+        raw_val = str(req.admin_chat_id).strip()
+        cleaned_id = re.sub(r"[^\d]", "", raw_val)
+        if cleaned_id:
+            update_fields["admin_chat_id"] = int(cleaned_id)
+        else:
+            update_fields["admin_chat_id"] = None
+
+    if req.bot_username is not None and req.bot_username.strip():
+        update_fields["bot_username"] = req.bot_username.strip().replace("@", "")
+
+    db_success = False
+    if supabase_client and update_fields:
+        try:
+            if is_valid_uuid(comp_uuid):
+                supabase_client.table("companies").update(update_fields).eq("id", comp_uuid).execute()
+                db_success = True
+            else:
+                uname = company.get("bot_username") or company_id
+                supabase_client.table("companies").update(update_fields).eq("bot_username", uname.replace("@", "")).execute()
+                db_success = True
+        except Exception as e:
+            logger.error(f"Ошибка сохранения компании {company_id} в Supabase: {e}")
+
+    # Обновление в оперативном кэше
+    if company:
+        for k, v in update_fields.items():
+            company[k] = v
+        if "admin_chat_id" in update_fields:
+            company["owner_id"] = update_fields["admin_chat_id"]
+
+    for key in [company_id, comp_uuid, (company.get("bot_username") if company else None)]:
+        if key and key in COMPANIES_CACHE:
+            for k, v in update_fields.items():
+                COMPANIES_CACHE[key][k] = v
+            if "admin_chat_id" in update_fields:
+                COMPANIES_CACHE[key]["owner_id"] = update_fields["admin_chat_id"]
+
+    updated_company = find_company(company_id) or company
+
+    return {
+        "success": True,
+        "message": f"Параметры компании «{company_id}» успешно обновлены",
+        "company": updated_company,
+        "db_updated": db_success,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Сохранение обновленных расценок: PATCH /api/companies/{company_id}/pricing
 # ---------------------------------------------------------------------------
 class UpdatePricingRequest(BaseModel):
@@ -2344,6 +2550,11 @@ class UpdatePricingRequest(BaseModel):
     designer_price: Optional[float] = None
     materials_price: Optional[float] = None
     secondary_coeff: Optional[float] = None
+    design_project_price: Optional[float] = None
+    demolition_price: Optional[float] = None
+    price_materials_m2: Optional[float] = None
+    price_design_m2: Optional[float] = None
+    price_demolition_m2: Optional[float] = None
     items: Optional[List[Dict[str, Any]]] = None
 
 
@@ -2352,31 +2563,69 @@ class UpdatePricingRequest(BaseModel):
 async def update_pricing_endpoint(req: UpdatePricingRequest, company_id: Optional[str] = None):
     """
     Обновляет расценки компании в Supabase и кэше (Pro Mode калибровка)
+    с автоматическим upsert в таблицу pricing_rules
     """
     target_id = company_id or req.company_id or "remont-pro"
     company = find_company(target_id)
     comp_uuid = str(company.get("uuid") or company.get("id")) if company else target_id
 
-    if supabase_client and is_valid_uuid(comp_uuid):
-        try:
-            update_data = {}
-            if req.capital_price is not None:
-                update_data["price_capital"] = req.capital_price
-            if req.cosmetic_price is not None:
-                update_data["price_cosmetic"] = req.cosmetic_price
-            if req.designer_price is not None:
-                update_data["price_designer"] = req.designer_price
-            if req.materials_price is not None:
-                update_data["price_materials_m2"] = req.materials_price
-            if req.secondary_coeff is not None:
-                update_data["coef_secondary"] = req.secondary_coeff
+    update_data = {}
+    if req.capital_price is not None:
+        update_data["price_capital"] = float(req.capital_price)
+    if req.cosmetic_price is not None:
+        update_data["price_cosmetic"] = float(req.cosmetic_price)
+    if req.designer_price is not None:
+        update_data["price_designer"] = float(req.designer_price)
+    if req.materials_price is not None:
+        update_data["price_materials_m2"] = float(req.materials_price)
+    elif req.price_materials_m2 is not None:
+        update_data["price_materials_m2"] = float(req.price_materials_m2)
+    if req.secondary_coeff is not None:
+        update_data["coef_secondary"] = float(req.secondary_coeff)
+    if req.design_project_price is not None:
+        update_data["price_design_m2"] = float(req.design_project_price)
+    elif req.price_design_m2 is not None:
+        update_data["price_design_m2"] = float(req.price_design_m2)
+    if req.demolition_price is not None:
+        update_data["price_demolition_m2"] = float(req.demolition_price)
+    elif req.price_demolition_m2 is not None:
+        update_data["price_demolition_m2"] = float(req.price_demolition_m2)
 
-            if update_data:
+    db_success = False
+    if supabase_client and is_valid_uuid(comp_uuid) and update_data:
+        try:
+            p_check = (
+                supabase_client.table("pricing_rules")
+                .select("id")
+                .eq("company_id", comp_uuid)
+                .maybe_single()
+                .execute()
+            )
+            if p_check and p_check.data:
                 supabase_client.table("pricing_rules").update(update_data).eq("company_id", comp_uuid).execute()
+                db_success = True
+            else:
+                insert_payload = dict(update_data)
+                insert_payload["company_id"] = comp_uuid
+                supabase_client.table("pricing_rules").insert(insert_payload).execute()
+                db_success = True
         except Exception as e:
             logger.error(f"Ошибка сохранения расценок в Supabase: {e}")
 
-    return {"success": True, "message": "Расценки успешно обновлены"}
+    # Обновляем локальный кэш
+    if company:
+        if "pricing" not in company or not isinstance(company.get("pricing"), dict):
+            company["pricing"] = {}
+        company["pricing"].update(update_data)
+        if req.secondary_coeff is not None:
+            company["secondary_coeff"] = float(req.secondary_coeff)
+
+    return {
+        "success": True,
+        "message": "Расценки успешно обновлены и сохранены",
+        "pricing": update_data,
+        "db_updated": db_success,
+    }
 
 
 # ---------------------------------------------------------------------------

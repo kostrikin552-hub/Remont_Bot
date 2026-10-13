@@ -41,6 +41,7 @@ import {
 } from './lib/supabase';
 import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
 import { AdminAccessGate } from './components/admin/AdminAccessGate';
+import { VisualPricingEditor } from './components/VisualPricingEditor';
 import { isSuperAdminUser } from './utils/auth';
 import { ChevronDown, SearchCheck, ArrowRight, LayoutDashboard, Calculator as CalcIcon } from 'lucide-react';
 
@@ -109,10 +110,19 @@ export default function App() {
   );
   const [excludedItemIds, setExcludedItemIds] = useState<string[]>([]);
 
-  // View mode: 'miniapp' (client calculator) or 'admin' (RemontSaaS SuperAdmin Dashboard)
-  const [viewMode, setViewMode] = useState<'miniapp' | 'admin'>(() => {
+  // View mode: 'miniapp' (client calculator), 'admin' (RemontSaaS SuperAdmin Dashboard), or 'pricing' (Visual Pricing Editor)
+  const [viewMode, setViewMode] = useState<'miniapp' | 'admin' | 'pricing'>(() => {
     if (typeof window !== 'undefined') {
       const urlParams = new URLSearchParams(window.location.search);
+      const wantsPricing =
+        urlParams.get('pricing') === 'true' ||
+        urlParams.get('mode') === 'pricing' ||
+        window.location.pathname.startsWith('/pricing');
+
+      if (wantsPricing) {
+        return 'pricing';
+      }
+
       const wantsAdmin =
         urlParams.get('admin') === 'true' ||
         urlParams.get('saas') === 'true' ||
@@ -443,6 +453,18 @@ export default function App() {
     return <AppSkeleton />;
   }
 
+  // If in Visual Pricing Editor mode (/pricing)
+  if (viewMode === 'pricing') {
+    return (
+      <VisualPricingEditor
+        initialCompanyId={activeCompanyId}
+        onBackToCalculator={() => setViewMode('miniapp')}
+        onOpenAdmin={isSuperAdmin ? () => setViewMode('admin') : undefined}
+        isSuperAdmin={isSuperAdmin}
+      />
+    );
+  }
+
   // If in SuperAdmin dashboard mode, render the full-scale B2B SaaS platform
   if (viewMode === 'admin') {
     if (!isSuperAdmin) {
@@ -473,6 +495,7 @@ export default function App() {
           onToggleTheme={handleToggleTheme}
           company={company}
           onOpenAdmin={isSuperAdmin ? () => setViewMode('admin') : undefined}
+          onOpenPricing={() => setViewMode('pricing')}
         />
 
         {/* Main Unified Calculator */}
@@ -665,6 +688,18 @@ export default function App() {
                 className="hover:text-zinc-800 dark:hover:text-zinc-200 underline cursor-pointer"
               >
                 Публичная оферта
+              </button>
+              <span>•</span>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setViewMode('pricing');
+                }}
+                className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 underline font-semibold cursor-pointer"
+                title="Визуальная настройка расценок на ремонт"
+              >
+                Редактор расценок (/pricing)
               </button>
               {isSuperAdmin && (
                 <>

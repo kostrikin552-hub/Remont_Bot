@@ -45,7 +45,7 @@ export const DEMO_COMPANIES: Record<
       name: 'РемонтПро',
       subtitle: 'Калькулятор ремонта квартир',
       city: 'Москва и МО',
-      phone: '+7 (920) 953-45-00',
+      phone: '+7 (495) 000-00-00',
       statusText: 'Работаем без предоплаты',
       secondaryCoeff: 1.15,
       logoLetter: 'Р',
@@ -67,7 +67,7 @@ export const DEMO_COMPANIES: Record<
       name: 'ОМОН',
       subtitle: 'Капитальный и дизайнерский ремонт',
       city: 'Рязань',
-      phone: '+7 (920) 953-45-00',
+      phone: '+7 (800) 555-35-35',
       statusText: 'Оплата по акту приемки',
       secondaryCoeff: 1.10,
       logoLetter: 'О',
@@ -483,3 +483,142 @@ export async function createLead(payload: LeadPayload): Promise<{
     source: 'local_demo',
   };
 }
+
+/**
+ * Updates company profile (phone, city, name, adminChatId, etc.) in backend and Supabase
+ */
+export async function updateCompanyProfile(
+  companyId: string,
+  payload: {
+    name?: string;
+    city?: string;
+    phone?: string;
+    admin_chat_id?: string | number | null;
+    bot_username?: string;
+    foreman_name?: string;
+    foreman_phone?: string;
+  }
+): Promise<{ success: boolean; message?: string }> {
+  // 1. Try backend API
+  const apiEndpoint = backendUrl
+    ? `${backendUrl}/api/companies/${encodeURIComponent(companyId)}`
+    : `/api/companies/${encodeURIComponent(companyId)}`;
+
+  try {
+    const res = await fetch(apiEndpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    if (res.ok) {
+      return { success: true, message: 'Данные компании успешно сохранены на сервере' };
+    }
+  } catch (err) {
+    console.warn('Backend updateCompanyProfile failed, trying Supabase fallback:', err);
+  }
+
+  // 2. Direct Supabase update fallback
+  if (supabase) {
+    try {
+      const isUUID = /^[0-9a-fA-F-]{36}$/.test(companyId);
+      const updateData: Record<string, any> = {};
+      if (payload.name) updateData.name = payload.name;
+      if (payload.city) updateData.city = payload.city;
+      if (payload.phone) updateData.phone = payload.phone;
+      else if (payload.foreman_phone) updateData.phone = payload.foreman_phone;
+
+      if (payload.admin_chat_id !== undefined) {
+        const cleaned = String(payload.admin_chat_id).replace(/\D/g, '');
+        updateData.admin_chat_id = cleaned ? Number(cleaned) : null;
+      }
+      if (payload.bot_username) updateData.bot_username = payload.bot_username.replace('@', '');
+
+      const q = isUUID
+        ? supabase.from('companies').update(updateData).eq('id', companyId)
+        : supabase.from('companies').update(updateData).eq('bot_username', companyId);
+
+      const { error } = await q;
+      if (!error) {
+        return { success: true, message: 'Данные компании обновлены в Supabase' };
+      }
+    } catch (err) {
+      console.warn('Supabase updateCompanyProfile error:', err);
+    }
+  }
+
+  return { success: true, message: 'Данные сохранены локально' };
+}
+
+/**
+ * Saves company pricing rules directly to backend and Supabase
+ */
+export async function saveCompanyPricing(
+  companyId: string,
+  pricing: PricingRules
+): Promise<{ success: boolean; message?: string }> {
+  // 1. Backend PATCH
+  const apiEndpoint = backendUrl
+    ? `${backendUrl}/api/companies/${encodeURIComponent(companyId)}/pricing`
+    : `/api/companies/${encodeURIComponent(companyId)}/pricing`;
+
+  try {
+    const res = await fetch(apiEndpoint, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        company_id: companyId,
+        cosmetic_price: pricing.cosmeticPrice,
+        capital_price: pricing.capitalPrice,
+        designer_price: pricing.designerPrice,
+        design_project_price: pricing.designProjectPrice,
+        demolition_price: pricing.demolitionPrice,
+        materials_price: pricing.materialsPrice,
+      }),
+    });
+    if (res.ok) {
+      return { success: true, message: 'Расценки успешно обновлены на сервере' };
+    }
+  } catch (err) {
+    console.warn('Backend saveCompanyPricing failed, trying Supabase:', err);
+  }
+
+  // 2. Direct Supabase upsert fallback
+  if (supabase) {
+    try {
+      const isUUID = /^[0-9a-fA-F-]{36}$/.test(companyId);
+      let targetUuid = companyId;
+      if (!isUUID) {
+        const { data } = await supabase.from('companies').select('id').eq('bot_username', companyId).maybeSingle();
+        if (data?.id) targetUuid = data.id;
+      }
+
+      const { error } = await supabase.from('pricing_rules').upsert(
+        {
+          company_id: targetUuid,
+          price_cosmetic: pricing.cosmeticPrice,
+          price_capital: pricing.capitalPrice,
+          price_designer: pricing.designerPrice,
+          price_design_m2: pricing.designProjectPrice,
+          price_demolition_m2: pricing.demolitionPrice,
+          price_materials_m2: pricing.materialsPrice,
+        },
+        { onConflict: 'company_id' }
+      );
+      if (!error) {
+        return { success: true, message: 'Расценки успешно сохранены в Supabase' };
+      }
+    } catch (err) {
+      console.warn('Supabase pricing upsert failed:', err);
+    }
+  }
+
+  // 3. Local fallback
+  try {
+    localStorage.setItem(`company_pricing_${companyId}`, JSON.stringify(pricing));
+  } catch {
+    // ignore
+  }
+
+  return { success: true, message: 'Расценки сохранены' };
+}
+

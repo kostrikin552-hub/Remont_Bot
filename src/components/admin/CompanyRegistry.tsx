@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { TenantCompany, BotDeploymentStatus } from '../../types/admin';
 import { triggerHaptic } from '../../utils/telegram';
+import { updateCompanyProfile } from '../../lib/supabase';
 
 interface CompanyRegistryProps {
   companies: TenantCompany[];
@@ -169,9 +170,23 @@ export function CompanyRegistry({
     setNewPrice(45000);
   };
 
-  const handleSaveEditedCompany = (e: React.FormEvent) => {
+  const handleSaveEditedCompany = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingCompany) return;
+
+    try {
+      await updateCompanyProfile(editingCompany.id, {
+        name: editingCompany.name,
+        city: editingCompany.city,
+        phone: editingCompany.foremanPhone,
+        admin_chat_id: editingCompany.adminChatId,
+        bot_username: editingCompany.botUsername,
+        foreman_name: editingCompany.foremanName,
+        foreman_phone: editingCompany.foremanPhone,
+      });
+    } catch (err) {
+      console.warn('Ошибка синхронизации компании через API:', err);
+    }
 
     if (onUpdateCompany) {
       onUpdateCompany(editingCompany);
@@ -800,12 +815,13 @@ export function CompanyRegistry({
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Телефон:</label>
+                  <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">Телефон компании / прораба:</label>
                   <input
                     type="text"
                     value={editingCompany.foremanPhone}
                     onChange={(e) => setEditingCompany({ ...editingCompany, foremanPhone: e.target.value })}
                     className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
+                    placeholder="+7 (999) 000-00-00"
                   />
                 </div>
                 <div>
@@ -817,6 +833,22 @@ export function CompanyRegistry({
                     className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-zinc-700 dark:text-zinc-300 font-bold mb-1">
+                  Telegram ID прораба (chat_id для заявок):
+                </label>
+                <input
+                  type="text"
+                  value={editingCompany.adminChatId || ''}
+                  onChange={(e) => setEditingCompany({ ...editingCompany, adminChatId: e.target.value })}
+                  placeholder="Например: 5629144056 или 8602664076"
+                  className="w-full px-3 py-2 bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-lg text-xs font-mono font-bold text-emerald-600 dark:text-emerald-400"
+                />
+                <p className="text-[10px] text-zinc-500 dark:text-zinc-400 mt-1">
+                  Все заявки, сметы и уведомления клиентов этого бота будут перенаправляться на указанный Telegram ID.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-3">

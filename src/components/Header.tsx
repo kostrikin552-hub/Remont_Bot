@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Moon, Sun, SlidersHorizontal } from 'lucide-react';
+import { Moon, Sun, SlidersHorizontal, Tag } from 'lucide-react';
 import { CompanyConfig } from '../types';
 import { triggerHaptic } from '../utils/telegram';
 import { isSuperAdminUser } from '../utils/auth';
@@ -10,6 +10,7 @@ interface HeaderProps {
   onToggleTheme: () => void;
   company: CompanyConfig;
   onOpenAdmin?: () => void;
+  onOpenPricing?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -17,6 +18,7 @@ export const Header: React.FC<HeaderProps> = ({
   onToggleTheme,
   company,
   onOpenAdmin,
+  onOpenPricing,
 }) => {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const isSuperAdmin = isSuperAdminUser();
@@ -83,6 +85,21 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <SlidersHorizontal className="w-3.5 h-3.5" />
               <span>Бот & БД</span>
+            </button>
+          )}
+
+          {onOpenPricing && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenPricing();
+              }}
+              title="Открыть Визуальный редактор расценок (/pricing)"
+              className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
+            >
+              <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Цены</span>
             </button>
           )}
 

@@ -24,7 +24,7 @@ import {
   getCompanyEstimateItems,
   saveCompanyEstimateItems,
 } from '../../utils/estimates';
-import { DEMO_COMPANIES, DEFAULT_COMPANY_ID } from '../../lib/supabase';
+import { DEMO_COMPANIES, DEFAULT_COMPANY_ID, saveCompanyPricing } from '../../lib/supabase';
 import { triggerHaptic } from '../../utils/telegram';
 import { SUPERADMIN_TELEGRAM_ID } from '../../utils/auth';
 
@@ -153,7 +153,11 @@ export function GlobalSettings({
   const handleSaveAll = () => {
     triggerHaptic('heavy');
 
-    // 1. Save pricing rules
+    // 1. Save pricing rules to API & Supabase
+    saveCompanyPricing(activeCompanyId, pricing).catch((err) => {
+      console.warn('saveCompanyPricing error:', err);
+    });
+
     if (typeof window !== 'undefined') {
       try {
         localStorage.setItem(`company_pricing_${activeCompanyId}`, JSON.stringify(pricing));
