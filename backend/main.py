@@ -205,17 +205,76 @@ def is_valid_uuid(val: Any) -> bool:
     return bool(re.match(r"^[0-9a-fA-F-]{36}$", str(val).strip()))
 
 
+def transliterate_name_to_slug(cname: str) -> str:
+    if not cname:
+        return ""
+    translit_map = {
+        'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo', 'ж': 'zh',
+        'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm', 'н': 'n', 'о': 'o',
+        'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u', 'ф': 'f', 'х': 'h', 'ц': 'ts',
+        'ч': 'ch', 'ш': 'sh', 'щ': 'sch', 'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya'
+    }
+    raw_translit = "".join([translit_map.get(ch, ch) for ch in str(cname).lower()])
+    auto_slug = re.sub(r"[^a-z0-9_]", "_", raw_translit).strip("_")
+    return re.sub(r"_+", "_", auto_slug)
+
+
+def normalize_and_cache_company(comp: Dict[str, Any], extra_alias: Optional[str] = None) -> Dict[str, Any]:
+    c_uuid = str(comp.get("id"))
+    c_uname = (comp.get("bot_username") or "").lower()
+    c_name = comp.get("name") or ""
+    t_slug = transliterate_name_to_slug(c_name)
+
+    comp["uuid"] = c_uuid
+    comp["secondary_coeff"] = comp.get("secondary_coeff", 1.15)
+    comp["status_text"] = comp.get("status_text", "Работаем без предоплаты")
+    comp["badge_text"] = comp.get("badge_text", "PRO")
+    comp["logo_letter"] = comp.get("logo_letter", (comp.get("name") or "Р")[0].upper())
+    comp["admin_chat_id"] = comp.get("admin_chat_id")
+    comp["owner_id"] = comp.get("admin_chat_id") or comp.get("owner_id")
+    comp_token = comp.get("bot_token_encrypted") or comp.get("bot_token")
+    comp["bot_token"] = comp_token
+    comp["bot_token_encrypted"] = comp_token
+
+    COMPANIES_CACHE[c_uuid] = comp
+    if c_uname:
+        COMPANIES_CACHE[c_uname] = comp
+        if c_uname.endswith("_bot"):
+            COMPANIES_CACHE[c_uname[:-4]] = comp
+        if c_uname.startswith("c"):
+            COMPANIES_CACHE[c_uname[1:]] = comp
+    if t_slug:
+        COMPANIES_CACHE[t_slug] = comp
+    if extra_alias:
+        COMPANIES_CACHE[str(extra_alias).lower()] = comp
+    return comp
+
+
+def load_all_companies_into_cache():
+    """Предварительная загрузка всех компаний из Supabase в оперативный кэш"""
+    if not supabase_client:
+        return
+    try:
+        res = supabase_client.table("companies").select("*").execute()
+        if res and res.data:
+            for item in res.data:
+                normalize_and_cache_company(item)
+            logger.info(f"Успешно загружено {len(res.data)} компаний из Supabase в кэш памяти.")
+    except Exception as e:
+        logger.debug(f"Ошибка загрузки компаний из Supabase в кэш: {e}")
+
+
 def find_company(identifier: str) -> Optional[Dict[str, Any]]:
     """
     Универсальный поиск компании:
-    1. Поиск в кэше по slug / username / uuid
-    2. Поиск в Supabase (по id если UUID, либо по bot_username)
+    1. Поиск в кэше по slug / username / translit / uuid
+    2. Поиск в Supabase (по id если UUID, либо по bot_username, либо по совпадению slug/имени)
     3. Fallback на демо РемонтПро
     """
     if not identifier:
         return None
     raw_key = identifier.strip()
-    lower_key = raw_key.lower()
+    lower_key = raw_key.lower().replace("@", "")
 
     # 1. Проверяем кэш
     for k in (lower_key, raw_key):
@@ -233,41 +292,55 @@ def find_company(identifier: str) -> Optional[Dict[str, Any]]:
                     .maybe_single()
                     .execute()
                 )
-            else:
-                res = (
+                if res and res.data:
+                    return normalize_and_cache_company(res.data, extra_alias=raw_key)
+
+            # Прямой поиск по bot_username
+            res = (
+                supabase_client.table("companies")
+                .select("*")
+                .eq("bot_username", lower_key)
+                .maybe_single()
+                .execute()
+            )
+            if res and res.data:
+                return normalize_and_cache_company(res.data, extra_alias=raw_key)
+
+            # Поиск по bot_username с суффиксом _bot
+            if not lower_key.endswith("_bot"):
+                res_bot = (
                     supabase_client.table("companies")
                     .select("*")
-                    .eq("bot_username", lower_key)
+                    .eq("bot_username", f"{lower_key}_bot")
                     .maybe_single()
                     .execute()
                 )
-            if res and res.data:
-                comp = res.data
-                c_uuid = str(comp.get("id"))
-                c_uname = (comp.get("bot_username") or "").lower()
+                if res_bot and res_bot.data:
+                    return normalize_and_cache_company(res_bot.data, extra_alias=raw_key)
 
-                # Нормализуем объект компании
-                comp["uuid"] = c_uuid
-                comp["secondary_coeff"] = comp.get("secondary_coeff", 1.15)
-                comp["status_text"] = comp.get("status_text", "Работаем без предоплаты")
-                comp["badge_text"] = comp.get("badge_text", "PRO")
-                comp["logo_letter"] = comp.get("logo_letter", (comp.get("name") or "Р")[0].upper())
-                comp["admin_chat_id"] = comp.get("admin_chat_id")
-                comp["owner_id"] = comp.get("admin_chat_id") or comp.get("owner_id")
-                comp_token = comp.get("bot_token_encrypted") or comp.get("bot_token")
-                comp["bot_token"] = comp_token
-                comp["bot_token_encrypted"] = comp_token
+            # Расширенный поиск по всем компаниям: slug, транслитерация и созвучия
+            all_res = supabase_client.table("companies").select("*").execute()
+            if all_res and all_res.data:
+                for comp_item in all_res.data:
+                    u_name = (comp_item.get("bot_username") or "").lower()
+                    c_name = comp_item.get("name") or ""
+                    c_slug = transliterate_name_to_slug(c_name)
 
-                COMPANIES_CACHE[c_uuid] = comp
-                if c_uname:
-                    COMPANIES_CACHE[c_uname] = comp
-                COMPANIES_CACHE[lower_key] = comp
-                return comp
+                    candidates = {u_name, c_slug, c_name.lower()}
+                    if u_name.endswith("_bot"):
+                        candidates.add(u_name[:-4])
+                    if u_name.startswith("c"):
+                        candidates.add(u_name[1:])
+                    if u_name.startswith("c") and u_name.endswith("_bot"):
+                        candidates.add(u_name[1:-4])
+
+                    if lower_key in candidates or any(cand and (lower_key in cand or cand in lower_key) for cand in candidates):
+                        return normalize_and_cache_company(comp_item, extra_alias=raw_key)
         except Exception as e:
             logger.error(f"Ошибка поиска компании '{identifier}' в Supabase: {e}")
 
     # 3. Fallback если запрашивался remont-pro
-    if lower_key == "remont-pro":
+    if lower_key in ["remont-pro", "remont_pro", "default", "remont"]:
         return COMPANIES_CACHE.get("remont-pro")
 
     return None
@@ -901,11 +974,14 @@ async def _finish_turnkey_bot_creation(msg: Message, state: FSMContext, deal_amo
     }
     COMPANIES_CACHE[slug] = comp_obj
     COMPANIES_CACHE[bot_username] = comp_obj
+    t_name_slug = transliterate_name_to_slug(company_name)
+    if t_name_slug:
+        COMPANIES_CACHE[t_name_slug] = comp_obj
     if company_uuid:
         COMPANIES_CACHE[company_uuid] = comp_obj
 
-    # 3. Установка вебхука на бэкенд
-    wh_url = f"{BASE_WEBHOOK_URL}/webhook/{slug}"
+    # 3. Установка вебхука на бэкенд (поддерживает как username, так и slug)
+    wh_url = f"{BASE_WEBHOOK_URL}/webhook/{bot_username}"
     wh_ok = False
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
@@ -924,7 +1000,8 @@ async def _finish_turnkey_bot_creation(msg: Message, state: FSMContext, deal_amo
         logger.error(f"Не удалось установить вебхук: {e}")
 
     # 4. Настройка кнопки MenuButtonWebApp для быстрого открытия калькулятора
-    mini_app_url = f"{WEBAPP_URL}?company_id={slug}&bot={bot_username}"
+    target_id_param = company_uuid or slug
+    mini_app_url = f"{WEBAPP_URL}?company_id={target_id_param}&bot={bot_username}"
     try:
         async with httpx.AsyncClient(timeout=10.0) as client:
             await client.post(
@@ -1413,6 +1490,9 @@ class LeadCreateRequest(BaseModel):
 # ---------------------------------------------------------------------------
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Предварительная загрузка всех компаний из БД в оперативный кэш
+    load_all_companies_into_cache()
+
     # Старт: настройка вебхука мастер-бота
     if master_bot and BASE_WEBHOOK_URL:
         master_webhook_url = f"{BASE_WEBHOOK_URL}/webhook/master"
@@ -1812,7 +1892,8 @@ async def client_bot_webhook(company_id: str, request: Request):
     # Штатная работа бота для клиентов и прорабов ЧЕРЕЗ КНОПКИ
     # -----------------------------------------------------------------------
     bot_uname = company_data.get("bot_username") or company_id
-    app_url = f"{MINI_APP_URL}?company_id={company_id}&bot={bot_uname}"
+    comp_ref = company_data.get("uuid") or company_data.get("id") or company_id
+    app_url = f"{MINI_APP_URL}?company_id={comp_ref}&bot={bot_uname}"
     company_name = company_data.get("name", "РемонтПро")
     company_city = company_data.get("city", "Москва и МО")
     company_phone = company_data.get("phone", "+7 (800) 555-35-35")
@@ -2490,7 +2571,13 @@ async def create_lead_endpoint(lead: LeadCreateRequest):
         elif is_valid_uuid(cuuid):
             company_uuid = cuuid
 
-    admin_chat_id = company.get("admin_chat_id") if company else None
+    # СТРОГАЯ ЗАЩИТА: company_id в таблице leads имеет NOT NULL constraint
+    # Если UUID не определен, привязываем заявку к базовой компании
+    if not company_uuid or not is_valid_uuid(company_uuid):
+        company_uuid = "00000000-0000-0000-0000-000000000001"
+
+    # Гарантированная доставка прорабу или супер-админу платформы
+    admin_chat_id = (company.get("admin_chat_id") if company else None) or SUPERADMIN_ID
     bot_token = (company.get("bot_token") if company else None) or MASTER_BOT_TOKEN
     comp_identifier = (company.get("bot_username") if company else None) or lead.company_id
 
