@@ -52,11 +52,11 @@ export const EngineeringParameters: React.FC<EngineeringParametersProps> = ({
   const hasExtraBaths = bathroomsCount > 1;
 
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-3">
-      {/* Header */}
+    <div className="space-y-3 pt-2">
+      {/* Header Info */}
       <div className="flex items-center justify-between px-0.5">
-        <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
-          2. Инженерные параметры и геометрия
+        <span className="text-[11px] font-bold text-zinc-700 dark:text-zinc-300 uppercase tracking-wider">
+          Инженерные параметры
         </span>
         <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium">
           Лазерная точность ГОСТ

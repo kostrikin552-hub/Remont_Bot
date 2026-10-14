@@ -39,6 +39,29 @@ export function VisualPricingEditor({
   onOpenAdmin,
   isSuperAdmin = false,
 }: VisualPricingEditorProps) {
+  if (!isSuperAdmin) {
+    return (
+      <div className="min-h-screen bg-zinc-950 text-white flex items-center justify-center p-4 font-['Manrope',sans-serif]">
+        <div className="max-w-md w-full bg-zinc-900 border border-zinc-800 rounded-2xl p-6 sm:p-8 shadow-2xl text-center space-y-4">
+          <div className="w-12 h-12 rounded-xl bg-red-500/10 border border-red-500/20 flex items-center justify-center text-red-400 mx-auto">
+            <ShieldCheck className="w-6 h-6 text-red-500" />
+          </div>
+          <h2 className="text-xl font-extrabold text-white">Доступ ограничен</h2>
+          <p className="text-sm text-zinc-400 leading-relaxed">
+            Редактирование расценок доступно исключительно владельцу сервиса.
+          </p>
+          <button
+            type="button"
+            onClick={onBackToCalculator}
+            className="w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-white font-bold rounded-xl text-sm transition cursor-pointer"
+          >
+            Вернуться в калькулятор
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   const [selectedCompanyId, setSelectedCompanyId] = useState<string>(initialCompanyId);
   const [company, setCompany] = useState<CompanyConfig>(() => DEMO_COMPANIES[DEFAULT_COMPANY_ID].company);
   const [pricing, setPricing] = useState<PricingRules>(() => DEMO_COMPANIES[DEFAULT_COMPANY_ID].pricing);

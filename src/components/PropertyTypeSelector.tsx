@@ -81,7 +81,7 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
     <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs">
       <div className="flex items-center justify-between mb-2 px-0.5">
         <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
-          1. Тип объекта и состояние
+          Тип объекта и состояние
         </span>
         <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/60">
           {currentItem.badge}

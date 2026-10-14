@@ -88,14 +88,14 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {onOpenPricing && (
+          {isSuperAdmin && onOpenPricing && (
             <button
               type="button"
               onClick={() => {
                 triggerHaptic('light');
                 onOpenPricing();
               }}
-              title="Открыть Визуальный редактор расценок (/pricing)"
+              title="Открыть Визуальный редактор расценок (/pricing) — доступно только владельцу"
               className="px-2.5 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
             >
               <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />

@@ -55,13 +55,13 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
                 <div className="flex items-center justify-between mb-1 min-h-[14px]">
                   {item.popular ? (
                     <span
-                      className={`text-[9px] font-extrabold px-1.5 py-0.5 rounded leading-none ${
+                      className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider leading-none ${
                         isSelected
-                          ? 'bg-white/20 text-white dark:bg-zinc-900/20 dark:text-zinc-950'
-                          : 'bg-zinc-200 text-zinc-800 dark:bg-zinc-700 dark:text-zinc-200'
+                          ? 'bg-emerald-500 text-zinc-950 font-black'
+                          : 'bg-emerald-600 text-white shadow-xs'
                       }`}
                     >
-                      Хит
+                      Хит продаж
                     </span>
                   ) : (
                     <span className="text-[9px] font-medium opacity-50 leading-none">

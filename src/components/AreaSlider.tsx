@@ -8,11 +8,11 @@ interface AreaSliderProps {
 }
 
 const PRESETS = [
-  { label: '28 м²', area: 28 },
-  { label: '42 м²', area: 42 },
-  { label: '62 м²', area: 62 },
-  { label: '85 м²', area: 85 },
-  { label: '120 м²', area: 120 },
+  { label: '35 м²', area: 35 },
+  { label: '45 м²', area: 45 },
+  { label: '54 м²', area: 54 },
+  { label: '75 м²', area: 75 },
+  { label: '100 м²', area: 100 },
 ];
 
 export const AreaSlider: React.FC<AreaSliderProps> = ({ value, onChange }) => {
