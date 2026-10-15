@@ -8,11 +8,11 @@ interface AreaSliderProps {
 }
 
 const PRESETS = [
-  { label: '35 м²', area: 35 },
-  { label: '45 м²', area: 45 },
-  { label: '54 м²', area: 54 },
-  { label: '75 м²', area: 75 },
-  { label: '100 м²', area: 100 },
+  { label: '35 м²', desc: 'Студия', area: 35 },
+  { label: '45 м²', desc: '1-комн.', area: 45 },
+  { label: '54 м²', desc: '2-комн.', area: 54 },
+  { label: '75 м²', desc: '3-комн.', area: 75 },
+  { label: '100 м²', desc: 'Дом/4К', area: 100 },
 ];
 
 export const AreaSlider: React.FC<AreaSliderProps> = ({ value, onChange }) => {
@@ -146,7 +146,10 @@ export const AreaSlider: React.FC<AreaSliderProps> = ({ value, onChange }) => {
                   : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700'
               }`}
             >
-              {p.label}
+              <span className="block leading-none">{p.label}</span>
+              <span className={`text-[9px] block leading-none mt-0.5 ${isSelected ? 'opacity-80' : 'text-zinc-500 dark:text-zinc-400'}`}>
+                {p.desc}
+              </span>
             </button>
           );
         })}

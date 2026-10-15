@@ -1,5 +1,4 @@
-import React from 'react';
-import { ArrowRight, FileText, Share2 } from 'lucide-react';
+import { ArrowRight, FileText, Share2, Printer } from 'lucide-react';
 import { CalculationResult } from '../types';
 import { formatCurrency, triggerHaptic } from '../utils/telegram';
 
@@ -8,6 +7,7 @@ interface StickyBottomBarProps {
   onOpenBreakdown?: () => void;
   onOpenBooking: () => void;
   onOpenShare?: () => void;
+  onOpenPrint?: () => void;
 }
 
 export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
@@ -15,6 +15,7 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
   onOpenBreakdown,
   onOpenBooking,
   onOpenShare,
+  onOpenPrint,
 }) => {
   const handleBookingClick = () => {
     triggerHaptic('heavy');
@@ -62,6 +63,21 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
 
         {/* Right: Actions */}
         <div className="flex items-center gap-1.5 shrink-0">
+          {onOpenPrint && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenPrint();
+              }}
+              className="w-10 h-10 rounded-xl bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-700 dark:text-zinc-200 flex items-center justify-center transition active:scale-95 border border-zinc-200/80 dark:border-zinc-700/80"
+              title="Открыть коммерческое предложение / печать сметы (PDF)"
+              aria-label="Печать сметы"
+            >
+              <Printer className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </button>
+          )}
+
           {onOpenShare && (
             <button
               type="button"

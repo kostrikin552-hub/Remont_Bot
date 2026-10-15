@@ -125,6 +125,17 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
           );
         })}
       </div>
+
+      {/* Подсказка мастера клиенту для снятия возражений */}
+      <div className="mt-2.5 pt-2 border-t border-zinc-100 dark:border-zinc-800 flex items-start gap-2 text-[11px] text-zinc-600 dark:text-zinc-400">
+        <span className="text-emerald-600 dark:text-emerald-400 font-bold shrink-0">💡 Подсказка:</span>
+        <span className="leading-snug">
+          <strong>{currentItem.title}:</strong> {currentItem.hint}. 
+          {currentItem.parentType === 'new'
+            ? ' Стены от застройщика готовы к оштукатуриванию без дорогого демонтажа.'
+            : ' Закладывается демонтаж старых покрытий, вывоз мусора и выравнивание геометрии.'}
+        </span>
+      </div>
     </div>
   );
 };
