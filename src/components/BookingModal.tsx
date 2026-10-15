@@ -28,6 +28,32 @@ interface BookingModalProps {
   onClose: () => void;
 }
 
+export function formatRussianPhone(raw: string): string {
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return '';
+
+  let normalized = digits;
+  if (normalized.startsWith('7') || normalized.startsWith('8')) {
+    normalized = normalized.slice(1);
+  }
+  normalized = normalized.slice(0, 10);
+
+  let formatted = '+7';
+  if (normalized.length > 0) {
+    formatted += ' (' + normalized.slice(0, 3);
+  }
+  if (normalized.length >= 3) {
+    formatted += ') ' + normalized.slice(3, 6);
+  }
+  if (normalized.length >= 6) {
+    formatted += '-' + normalized.slice(6, 8);
+  }
+  if (normalized.length >= 8) {
+    formatted += '-' + normalized.slice(8, 10);
+  }
+  return formatted;
+}
+
 export const BookingModal: React.FC<BookingModalProps> = ({
   result,
   company,
@@ -77,12 +103,28 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   // Нативный запрос контакта через Telegram WebApp
   const handleRequestTelegramContact = () => {
     triggerHaptic('medium');
-    const tg = window.Telegram?.WebApp as unknown as { requestContact?: (callback: (ok: boolean) => void) => void };
+    const tg = window.Telegram?.WebApp as any;
     if (tg?.requestContact) {
       try {
-        tg.requestContact((ok: boolean) => {
+        tg.requestContact((ok: boolean, response: any) => {
           if (ok) {
             triggerHaptic('success');
+            const rawPhone =
+              response?.responseUnsafe?.contact?.phone_number ||
+              response?.contact?.phone_number ||
+              response?.phone_number;
+            const firstName =
+              response?.responseUnsafe?.contact?.first_name ||
+              response?.contact?.first_name;
+
+            if (rawPhone) {
+              const formatted = formatRussianPhone(rawPhone);
+              setForm((prev) => ({
+                ...prev,
+                phone: formatted,
+                name: prev.name || firstName || prev.name,
+              }));
+            }
           }
         });
         return;
@@ -107,6 +149,64 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         a.click();
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
+        setIsDownloadingPdf(false);
+        return;
+      }
+    } catch {
+      // Fallback to printable summary
+    }
+
+    try {
+      const printWindow = window.open('', '_blank');
+      if (printWindow) {
+        printWindow.document.write(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <meta charset="utf-8">
+            <title>Смета на ремонт квартиры #${bookingCode} - ${company.name}</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; padding: 24px; color: #18181b; }
+              .header { border-bottom: 2px solid #10b981; padding-bottom: 12px; margin-bottom: 20px; display: flex; justify-content: space-between; }
+              .title { font-size: 20px; font-weight: 800; color: #09090b; }
+              .info { font-size: 13px; color: #52525b; line-height: 1.5; }
+              .meta-box { background: #f4f4f5; padding: 12px; border-radius: 8px; margin: 16px 0; font-size: 13px; }
+              .total-box { background: #ecfdf5; border: 1px solid #10b981; padding: 16px; border-radius: 8px; margin-top: 24px; font-size: 18px; font-weight: bold; color: #065f46; }
+              .footer { margin-top: 32px; font-size: 11px; color: #a1a1aa; border-top: 1px solid #e4e4e7; padding-top: 12px; }
+            </style>
+          </head>
+          <body>
+            <div class="header">
+              <div>
+                <div class="title">${company.name}</div>
+                <div class="info">${company.city} ${company.phone ? ' · ' + company.phone : ''}</div>
+              </div>
+              <div style="text-align: right;" class="info">
+                <div>Заявка №: <b>${bookingCode}</b></div>
+                <div>Дата: ${new Date().toLocaleDateString('ru-RU')}</div>
+              </div>
+            </div>
+
+            <div class="meta-box">
+              <div><b>Параметры объекта:</b> ${result.area} м² · ${result.propertyType === 'new' ? 'Новостройка' : 'Вторичное жилье'} · Потолки ${result.ceilingHeight} м · ${result.bathroomsCount} санузел</div>
+              <div><b>Тарифный план:</b> ${result.renovationClass.title} (${result.renovationClass.description || ''})</div>
+              <div><b>Заказчик:</b> ${form.name} (${form.phone})</div>
+            </div>
+
+            <div class="total-box">
+              Итоговая ориентировочная смета работ: ${formatCurrency(result.totalCost)}
+            </div>
+
+            <div class="footer">
+              Документ сформирован онлайн-калькулятором ${company.name}. Все расценки фиксируются в договоре подряда с гарантией качества по СНиП/ГОСТ.
+            </div>
+            <script>
+              window.onload = function() { window.print(); };
+            </script>
+          </body>
+          </html>
+        `);
+        printWindow.document.close();
       } else {
         window.print();
       }
@@ -140,8 +240,8 @@ export const BookingModal: React.FC<BookingModalProps> = ({
     }
 
     const cleanPhone = form.phone.replace(/\D/g, '');
-    if (!form.phone.trim() || cleanPhone.length < 10) {
-      setError('Укажите корректный номер телефона (от 10 цифр)');
+    if (!form.phone.trim() || cleanPhone.length < 11) {
+      setError('Укажите полный номер телефона РФ: +7 (9XX) XXX-XX-XX');
       triggerHaptic('heavy');
       return;
     }
@@ -509,13 +609,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                     <input
                       type="tel"
                       required
-                      placeholder="+7 999 000-00-00"
+                      placeholder="+7 (999) 000-00-00"
                       value={form.phone}
                       onChange={(e) => {
                         setError('');
-                        setForm({ ...form, phone: e.target.value });
+                        setForm({ ...form, phone: formatRussianPhone(e.target.value) });
                       }}
-                      className="w-full pl-9 pr-3 py-2.5 text-sm bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
+                      className="w-full pl-9 pr-3 py-2.5 text-sm font-mono bg-zinc-50 dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 rounded-xl text-zinc-900 dark:text-white focus:outline-none focus:ring-1 focus:ring-zinc-900 dark:focus:ring-zinc-100"
                     />
                   </div>
                   {error && (

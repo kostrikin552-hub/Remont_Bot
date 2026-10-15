@@ -45,7 +45,7 @@ export const StickyBottomBar: React.FC<StickyBottomBarProps> = ({
             <button
               type="button"
               onClick={handleBreakdownClick}
-              className="text-[11px] font-bold text-zinc-800 dark:text-zinc-200 underline decoration-zinc-400 flex items-center gap-0.5"
+              className="text-[11px] font-bold text-zinc-800 dark:text-zinc-200 underline decoration-zinc-400 hover:text-emerald-600 dark:hover:text-emerald-400 flex items-center gap-0.5 cursor-pointer transition-colors"
             >
               <FileText className="w-3 h-3 text-zinc-400 shrink-0" />
               <span>к смете</span>

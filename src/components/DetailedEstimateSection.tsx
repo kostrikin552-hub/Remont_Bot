@@ -23,7 +23,7 @@ import {
 import {
   formatTextEstimate,
 } from '../utils/estimates';
-import { formatCurrency, triggerHaptic, getDetectedBotUsername, isBotOwner } from '../utils/telegram';
+import { formatCurrency, triggerHaptic, getDetectedBotUsername, isBotOwner, copyTextToClipboard } from '../utils/telegram';
 import { EngineeringReserveCard } from './EngineeringReserveCard';
 
 interface DetailedEstimateSectionProps {
@@ -106,7 +106,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
 
   const botUsername = getDetectedBotUsername(company.botUsername, company.id);
 
-  const handleCopy = () => {
+  const handleCopy = async () => {
     triggerHaptic('success');
     const text = formatTextEstimate(
       company.name,
@@ -117,7 +117,7 @@ export const DetailedEstimateSection: React.FC<DetailedEstimateSectionProps> = (
       estimateData.grandTotal,
       botUsername
     );
-    navigator.clipboard?.writeText(text);
+    await copyTextToClipboard(text);
     setCopied(true);
     setTimeout(() => setCopied(false), 2200);
   };

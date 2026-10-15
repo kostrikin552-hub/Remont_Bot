@@ -22,15 +22,17 @@ import {
  * - 3+ room > 65 m² -> ratio 2.4
  */
 export function calculateAccurateSurfaces(area: number, ceilingHeight: number = 2.7) {
+  const safeArea = Math.max(10, Number(area) || 10);
+  const safeHeight = Math.max(2.2, Math.min(5.0, Number(ceilingHeight) || 2.7));
   let perimeterRatio = 2.4;
-  if (area <= 35) {
+  if (safeArea <= 35) {
     perimeterRatio = 3.4; // Для компактных студий
-  } else if (area <= 65) {
+  } else if (safeArea <= 65) {
     perimeterRatio = 2.8; // Для 1-2 комнатных квартир
   }
 
-  const heightFactor = ceilingHeight / 2.7;
-  const wallArea = Math.round(area * perimeterRatio * heightFactor * 10) / 10;
+  const heightFactor = safeHeight / 2.7;
+  const wallArea = Math.round(safeArea * perimeterRatio * heightFactor * 10) / 10;
 
   return { wallArea, perimeterRatio, heightFactor };
 }
