@@ -30,7 +30,7 @@ import {
   INITIAL_ERROR_LOGS,
 } from '../../data/mockAdminData';
 import { TenantCompany, LiveLead, SaasStats, SystemServiceNode, SystemErrorLog } from '../../types/admin';
-import { isSuperAdminUser, SUPERADMIN_TELEGRAM_ID, logoutSuperAdmin } from '../../utils/auth';
+import { isSuperAdminUser, logoutSuperAdmin } from '../../utils/auth';
 import { triggerHaptic } from '../../utils/telegram';
 import { updateCompanyProfile } from '../../lib/supabase';
 import {
@@ -315,7 +315,7 @@ export function SuperAdminDashboard({
           </div>
           <h2 className="text-lg font-bold text-red-200">Доступ заблокирован</h2>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            Панель управления ботом и базой данных доступна исключительно владельцу с Telegram ID: <span className="font-mono text-emerald-400 font-bold">{SUPERADMIN_TELEGRAM_ID}</span>.
+            Панель управления платформой и настройки расценок защищены. Доступ открыт исключительно для верифицированного аккаунта владельца сервиса.
           </p>
           {onSwitchToMiniApp && (
             <button
@@ -438,7 +438,7 @@ export function SuperAdminDashboard({
               </div>
               <div className="hidden xl:block text-left">
                 <div className="text-xs font-bold text-zinc-950 dark:text-white leading-tight">Владелец</div>
-                <div className="text-[10px] text-zinc-500 font-mono">ID: {SUPERADMIN_TELEGRAM_ID}</div>
+                <div className="text-[10px] text-emerald-500 font-mono font-semibold">● Верифицирован</div>
               </div>
               <button
                 type="button"

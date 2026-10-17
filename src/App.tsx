@@ -42,9 +42,11 @@ import {
 import { SuperAdminDashboard } from './components/admin/SuperAdminDashboard';
 import { AdminAccessGate } from './components/admin/AdminAccessGate';
 import { VisualPricingEditor } from './components/VisualPricingEditor';
-import { StepWizardNav, WizardStepId } from './components/StepWizardNav';
+import { StepWizardNav } from './components/StepWizardNav';
 import { PriceLockCard } from './components/PriceLockCard';
 import { PrintProposalModal } from './components/PrintProposalModal';
+import { CompetitorTruthTable } from './components/CompetitorTruthTable';
+import { AiProjectScannerModal } from './components/AiProjectScannerModal';
 import { isSuperAdminUser } from './utils/auth';
 import {
   ChevronDown,
@@ -62,6 +64,7 @@ import {
   ShieldCheck,
   Printer,
   Compass,
+  Zap,
 } from 'lucide-react';
 
 const FAQ_ITEMS = [
@@ -164,12 +167,8 @@ export default function App() {
   const [isOfferOpen, setIsOfferOpen] = useState(false);
   const [isPrivacyOpen, setIsPrivacyOpen] = useState(false);
   const [isProposalOpen, setIsProposalOpen] = useState(false);
+  const [isAiScannerOpen, setIsAiScannerOpen] = useState(false);
   const [expandedFaq, setExpandedFaq] = useState<number | null>(null);
-
-  // Пошаговый мастер (Step-by-step Wizard) для понятной презентации заказчику
-  const [isWizardMode, setIsWizardMode] = useState<boolean>(true);
-  const [currentStep, setCurrentStep] = useState<WizardStepId>(1);
-  const [maxReachedStep, setMaxReachedStep] = useState<WizardStepId>(1);
 
   // Accordion collapsible states for high-converting compact structure
   const [isDetailedEstimateOpen, setIsDetailedEstimateOpen] = useState(false);
@@ -486,6 +485,13 @@ export default function App() {
   // If in Visual Pricing Editor mode (/pricing)
   if (viewMode === 'pricing') {
     if (!isSuperAdmin) {
+      // Внутри Telegram для любого чужого аккаунта доступ категорически закрыт: возврат в калькулятор
+      const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+      if (tgUserId && String(tgUserId) !== '5629144056') {
+        setViewMode('miniapp');
+        return null;
+      }
+
       return (
         <AdminAccessGate
           onAuthorized={() => setViewMode('pricing')}
@@ -508,6 +514,13 @@ export default function App() {
   // If in SuperAdmin dashboard mode, render the full-scale B2B SaaS platform
   if (viewMode === 'admin') {
     if (!isSuperAdmin) {
+      // Внутри Telegram для любого чужого аккаунта доступ категорически закрыт: возврат в калькулятор
+      const tgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
+      if (tgUserId && String(tgUserId) !== '5629144056') {
+        setViewMode('miniapp');
+        return null;
+      }
+
       return (
         <AdminAccessGate
           onAuthorized={() => setViewMode('admin')}
@@ -540,571 +553,351 @@ export default function App() {
 
         {/* Main Unified Calculator */}
         <main className="px-3 space-y-3 mt-2">
-          {/* Интерактивный навигатор пошагового мастера с переключателем режимов */}
-          <StepWizardNav
-            currentStep={currentStep}
-            onSelectStep={(s) => {
-              setCurrentStep(s);
-              setMaxReachedStep((prev) => Math.max(prev, s) as WizardStepId);
-            }}
-            isWizardMode={isWizardMode}
-            onToggleMode={(wiz) => setIsWizardMode(wiz)}
-            maxReachedStep={maxReachedStep}
-          />
+          {/* Интерактивный якорный трекер этапов расчета */}
+          <StepWizardNav grandTotal={estimateData.grandTotal} />
 
-          {isWizardMode ? (
-            /* --- РЕЖИМ ПОШАГОВОГО МАСТЕРА (WIZARD MODE) --- */
-            <div className="space-y-3">
-              {/* ШАГ 1: Объект и площадь */}
-              {currentStep === 1 && (
-                <div className="space-y-3 animate-in fade-in duration-200">
-                  <PropertyTypeSelector
-                    value={propertyType}
-                    subtype={propertySubtype}
-                    onChange={(type) => setPropertyType(type)}
-                    onChangeSubtype={(st) => setPropertySubtype(st)}
-                    secondaryCoeff={company.secondaryCoeff}
-                  />
-
-                  <AreaSlider
-                    value={area}
-                    onChange={(val) => setArea(val)}
-                  />
-
-                  {/* Нижняя панель перехода Шаг 1 -> Шаг 2 */}
-                  <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-between gap-3">
-                    <div className="text-xs">
-                      <span className="text-zinc-500 dark:text-zinc-400 block text-[10px] uppercase font-bold">Ориентир сметы:</span>
-                      <span className="font-extrabold font-mono text-zinc-900 dark:text-white text-sm sm:text-base">
-                        {formatCurrency(estimateData.grandTotal)}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('medium');
-                        setCurrentStep(2);
-                        setMaxReachedStep((prev) => Math.max(prev, 2) as WizardStepId);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
-                    >
-                      <span>Далее: Класс ремонта</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
+          {/* AI-Сметчик чертежей и смет (Gemini Flash) Banner */}
+          <div className="bg-zinc-900 text-white rounded-xl p-3 border border-zinc-800 shadow-xs flex items-center justify-between gap-3 relative overflow-hidden">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Zap className="w-4 h-4" />
+              </div>
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="text-xs font-bold text-white">AI-Сметчик по чертежам</span>
+                  <span className="text-[9px] font-mono bg-emerald-950/80 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-800/80">
+                    Gemini Flash
+                  </span>
                 </div>
-              )}
+                <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                  Загрузите PDF дизайн-проекта ➔ парсинг чертежей и смета за 15 сек
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('medium');
+                setIsAiScannerOpen(true);
+              }}
+              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shrink-0 transition active:scale-95 cursor-pointer shadow-xs"
+            >
+              Скан PDF
+            </button>
+          </div>
 
-              {/* ШАГ 2: Класс ремонта и состав работ */}
-              {currentStep === 2 && (
-                <div className="space-y-3 animate-in fade-in duration-200">
-                  <RenovationClassCards
-                    classes={dynamicClasses}
-                    selectedId={selectedClassId}
-                    onSelect={(id) => setSelectedClassId(id)}
-                  />
+          {/* 1. Базовые параметры объекта: Тип недвижимости и площадь */}
+          <section id="sec-property" className="space-y-3 scroll-mt-24">
+            <PropertyTypeSelector
+              value={propertyType}
+              subtype={propertySubtype}
+              onChange={(type) => setPropertyType(type)}
+              onChangeSubtype={(st) => setPropertySubtype(st)}
+              secondaryCoeff={company.secondaryCoeff}
+            />
 
-                  {/* Поясняющая карточка тарифов для мастера и клиента */}
-                  <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 text-xs space-y-1.5">
-                    <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
-                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
-                      <span>Разница между тарифами простыми словами:</span>
-                    </div>
-                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
-                      • <strong>Косметический:</strong> Чистовое обновление (обои/покраска, ламинат, натяжной потолок) без демонтажа и переноса коммуникаций.
-                    </p>
-                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
-                      • <strong>Капитальный под ключ (Хит):</strong> Новая стяжка пола, выравнивание стен под 90° по маякам, разводка труб Rehau и щит с автоматами.
-                    </p>
-                    <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
-                      • <strong>Дизайнерский:</strong> Проектная отделка, теневые профили, керамогранит 120×60, скрытый плинтус и трековый свет.
-                    </p>
-                  </div>
+            <AreaSlider
+              value={area}
+              onChange={(val) => setArea(val)}
+            />
+          </section>
 
-                  {/* Навигация Шага 2 */}
-                  <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setCurrentStep(1);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="py-2.5 px-3 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      <span>Назад</span>
-                    </button>
+          {/* 2. Выбор тарифа отделки с составом работ */}
+          <section id="sec-tariff" className="space-y-3 scroll-mt-24">
+            <RenovationClassCards
+              classes={dynamicClasses}
+              selectedId={selectedClassId}
+              onSelect={(id) => setSelectedClassId(id)}
+            />
 
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('medium');
-                        setCurrentStep(3);
-                        setMaxReachedStep((prev) => Math.max(prev, 3) as WizardStepId);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
-                    >
-                      <span>Далее: Опции и материалы</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
+            {/* Карточка-подсказка сравнения тарифов */}
+            <div className="p-3 rounded-xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-900/50 text-xs space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-emerald-800 dark:text-emerald-300">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                <span>Разница между тарифами простыми словами:</span>
+              </div>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+                • <strong>Косметический:</strong> Чистовое обновление (обои/покраска, ламинат, натяжной потолок) без демонтажа и переноса коммуникаций.
+              </p>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+                • <strong>Капитальный под ключ (Хит):</strong> Новая стяжка пола, выравнивание стен под 90° по маякам, разводка труб Rehau и щит с автоматами.
+              </p>
+              <p className="text-[11px] text-zinc-600 dark:text-zinc-400 leading-snug">
+                • <strong>Дизайнерский:</strong> Проектная отделка, теневые профили, керамогранит 120×60, скрытый плинтус и трековый свет.
+              </p>
+            </div>
+          </section>
+
+          {/* 3. Дополнительные опции и инженерия */}
+          <section id="sec-options" className="space-y-3 scroll-mt-24">
+            <AdditionalOptions
+              options={dynamicOptions}
+              area={area}
+              onToggle={handleToggleOption}
+            />
+
+            {/* Сворачиваемые инженерные параметры */}
+            <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden transition-all">
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsEngineeringOpen(!isEngineeringOpen);
+                }}
+                className="w-full p-3 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2">
+                  <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
+                  <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
+                    Уточнить санузлы и высоту потолков ({bathroomsCount} узел, {ceilingHeight} м)
+                  </span>
                 </div>
-              )}
-
-              {/* ШАГ 3: Дополнительные опции и инженерия */}
-              {currentStep === 3 && (
-                <div className="space-y-3 animate-in fade-in duration-200">
-                  <AdditionalOptions
-                    options={dynamicOptions}
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${
+                    isEngineeringOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
+                  }`}
+                />
+              </button>
+              {isEngineeringOpen && (
+                <div className="p-3 pt-0 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in duration-150">
+                  <EngineeringParameters
+                    bathroomsCount={bathroomsCount}
+                    onChangeBathrooms={(b) => setBathroomsCount(b)}
+                    ceilingHeight={ceilingHeight}
+                    onChangeCeiling={(h) => setCeilingHeight(h)}
                     area={area}
-                    onToggle={handleToggleOption}
+                    wallArea={estimateData.wallArea}
+                    perimeterRatio={estimateData.perimeterRatio}
+                    finishingEstimate={estimateData.finishingMaterialsEstimate}
+                    wetAreasCost={estimateData.wetAreasCost}
+                    renovationClassId={selectedClassId}
                   />
-
-                  {/* Инженерные параметры */}
-                  <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-2">
-                    <div className="flex items-center gap-2 mb-1">
-                      <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                      <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
-                        Санузлы и высота потолков ({bathroomsCount} узел, {ceilingHeight} м)
-                      </span>
-                    </div>
-                    <EngineeringParameters
-                      bathroomsCount={bathroomsCount}
-                      onChangeBathrooms={(b) => setBathroomsCount(b)}
-                      ceilingHeight={ceilingHeight}
-                      onChangeCeiling={(h) => setCeilingHeight(h)}
-                      area={area}
-                      wallArea={estimateData.wallArea}
-                      perimeterRatio={estimateData.perimeterRatio}
-                      finishingEstimate={estimateData.finishingMaterialsEstimate}
-                      wetAreasCost={estimateData.wetAreasCost}
-                      renovationClassId={selectedClassId}
-                    />
-                  </div>
-
-                  {/* Навигация Шага 3 */}
-                  <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setCurrentStep(2);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="py-2.5 px-3 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
-                    >
-                      <ArrowLeft className="w-4 h-4" />
-                      <span>Назад</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('heavy');
-                        setCurrentStep(4);
-                        setMaxReachedStep((prev) => Math.max(prev, 4) as WizardStepId);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-bold text-xs flex items-center gap-1.5 shadow-sm active:scale-95 transition cursor-pointer"
-                    >
-                      <span>Далее: Итоговая смета и фиксация</span>
-                      <ArrowRight className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-              )}
-
-              {/* ШАГ 4: Итоговая смета, фиксация цены и КП */}
-              {currentStep === 4 && (
-                <div className="space-y-3 animate-in fade-in duration-200">
-                  {/* Hero Result Card */}
-                  <div className="bg-gradient-to-br from-emerald-950 via-zinc-900 to-zinc-950 text-white rounded-2xl p-4 sm:p-5 border border-emerald-800/50 shadow-xl space-y-3.5">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="flex items-center gap-1.5 flex-wrap">
-                          <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-2 py-0.5 rounded-sm">
-                            Итоговая смета под ключ
-                          </span>
-                          <span className="text-[11px] text-zinc-400 font-medium">
-                            · {calculation.area} м² ({calculation.propertyType === 'new' ? 'Новостройка' : 'Вторичка'})
-                          </span>
-                        </div>
-                        <div className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-white mt-1.5 flex items-baseline gap-2">
-                          <span>{formatCurrency(estimateData.grandTotal)}</span>
-                        </div>
-                        <div className="text-xs text-emerald-300/90 font-medium mt-0.5 flex items-center gap-2">
-                          <span>~{Math.round(estimateData.grandTotal / calculation.area).toLocaleString('ru-RU')} ₽/м²</span>
-                          <span>•</span>
-                          <span>Срок: ~{calculation.estimatedDays.min}–{calculation.estimatedDays.max} дней</span>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            triggerHaptic('light');
-                            setIsProposalOpen(true);
-                          }}
-                          className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-emerald-400 transition shrink-0 active:scale-95 cursor-pointer"
-                          title="Открыть коммерческое предложение / PDF"
-                        >
-                          <Printer className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            triggerHaptic('light');
-                            setIsShareOpen(true);
-                          }}
-                          className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-zinc-300 transition shrink-0 active:scale-95 cursor-pointer"
-                          title="Поделиться расчетом / сохранить в Telegram"
-                        >
-                          <Share2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Главная кнопка действия (Primary CTA) */}
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('heavy');
-                        setIsBookingOpen(true);
-                      }}
-                      className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 rounded-xl font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-950/40 transition flex items-center justify-center gap-2 cursor-pointer"
-                    >
-                      <Calendar className="w-4 h-4 shrink-0" />
-                      <span>Записаться на бесплатный замер (0 ₽) и зафиксировать скидку</span>
-                      <ArrowRight className="w-4 h-4 shrink-0" />
-                    </button>
-                  </div>
-
-                  {/* Сертификат фиксации цены и гарантийный блок */}
-                  <PriceLockCard
-                    grandTotal={estimateData.grandTotal}
-                    worksTotal={estimateData.worksTotal}
-                    materialsTotal={estimateData.materialsTotal}
-                    area={calculation.area}
-                    estimatedDays={calculation.estimatedDays}
-                    onOpenBooking={() => setIsBookingOpen(true)}
-                    onOpenPrint={() => setIsProposalOpen(true)}
-                  />
-
-                  {/* Детальная смета по 35 пунктам ГОСТ (Сворачиваемый аккордеон) */}
-                  <div
-                    id="estimate-breakdown"
-                    className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden transition-all scroll-mt-14"
-                  >
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setIsDetailedEstimateOpen(!isDetailedEstimateOpen);
-                      }}
-                      className="w-full p-3.5 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition cursor-pointer"
-                    >
-                      <div className="flex items-center gap-2.5">
-                        <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 font-bold">
-                          <FileText className="w-4 h-4" />
-                        </div>
-                        <div>
-                          <div className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
-                            <span>Подробная смета по 35 пунктам ГОСТ</span>
-                            <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-sm font-mono">
-                              35 работ
-                            </span>
-                          </div>
-                          <p className="text-[11px] text-zinc-500 mt-0.5">
-                            {isDetailedEstimateOpen ? 'Нажмите, чтобы скрыть детализацию' : 'Раскрыть технологическую карту с ценами за единицу'}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-xs font-bold font-mono text-zinc-900 dark:text-zinc-100 hidden sm:inline">
-                          {formatCurrency(estimateData.grandTotal)}
-                        </span>
-                        <ChevronDown
-                          className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
-                            isDetailedEstimateOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
-                          }`}
-                        />
-                      </div>
-                    </button>
-                    {isDetailedEstimateOpen && (
-                      <div className="p-3 pt-0 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in duration-150">
-                        <DetailedEstimateSection
-                          result={calculation}
-                          company={company}
-                          pricing={pricing}
-                          items={items}
-                          onUpdateItems={handleUpdateItems}
-                          onResetItems={handleResetItems}
-                          excludedItemIds={excludedItemIds}
-                          onToggleItemExclusion={handleToggleItemExclusion}
-                          onRestoreAllItems={handleRestoreAllItems}
-                          estimateData={estimateData}
-                          onOpenBooking={() => setIsBookingOpen(true)}
-                          onOpenShare={() => setIsShareOpen(true)}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Навигация Шага 4 */}
-                  <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs flex items-center justify-between gap-3">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setCurrentStep(1);
-                        window.scrollTo({ top: 0, behavior: 'smooth' });
-                      }}
-                      className="py-2.5 px-3 rounded-xl border border-zinc-200 dark:border-zinc-700 text-zinc-700 dark:text-zinc-300 font-bold text-xs flex items-center gap-1 hover:bg-zinc-100 dark:hover:bg-zinc-800 transition cursor-pointer"
-                    >
-                      <ArrowLeft className="w-3.5 h-3.5" />
-                      <span>Изменить параметры</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setIsProposalOpen(true);
-                      }}
-                      className="py-2.5 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition cursor-pointer"
-                    >
-                      <Printer className="w-3.5 h-3.5" />
-                      <span>Печать / PDF сметы</span>
-                    </button>
-                  </div>
                 </div>
               )}
             </div>
-          ) : (
-            /* --- СВОДНЫЙ РЕЖИМ (ALL-IN-ONE VIEW) --- */
-            <div className="space-y-3">
-              {/* 1. Базовые параметры объекта */}
-              <PropertyTypeSelector
-                value={propertyType}
-                subtype={propertySubtype}
-                onChange={(type) => setPropertyType(type)}
-                onChangeSubtype={(st) => setPropertySubtype(st)}
-                secondaryCoeff={company.secondaryCoeff}
-              />
+          </section>
 
-              {/* 2. Площадь объекта с быстрыми чипами */}
-              <AreaSlider
-                value={area}
-                onChange={(val) => setArea(val)}
-              />
+          {/* 4. Финальная смета, фиксация цены и КП */}
+          <section id="sec-estimate" className="space-y-3 scroll-mt-24">
+            {/* Интерактивный аудит честной сметы: разоблачение уловок конкурентов */}
+            <CompetitorTruthTable />
 
-              {/* 3. Выбор тарифа отделки */}
-              <RenovationClassCards
-                classes={dynamicClasses}
-                selectedId={selectedClassId}
-                onSelect={(id) => setSelectedClassId(id)}
-              />
-
-              {/* 4. ГЛАВНЫЙ КОНВЕРСИОННЫЙ ОФФЕР */}
-              <div className="bg-gradient-to-br from-emerald-950 via-zinc-900 to-zinc-950 text-white rounded-2xl p-4 sm:p-5 border border-emerald-800/50 shadow-xl space-y-3.5">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      <span className="text-[10px] font-extrabold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 border border-emerald-800/60 px-2 py-0.5 rounded-sm">
-                        Итоговая смета под ключ
-                      </span>
-                      <span className="text-[11px] text-zinc-400 font-medium">
-                        · {calculation.area} м² ({calculation.propertyType === 'new' ? 'Новостройка' : 'Вторичка'})
-                      </span>
-                    </div>
-                    <div className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-white mt-1.5 flex items-baseline gap-2">
-                      <span>{formatCurrency(estimateData.grandTotal)}</span>
-                    </div>
-                    <div className="text-xs text-emerald-300/90 font-medium mt-0.5 flex items-center gap-2">
-                      <span>~{Math.round(estimateData.grandTotal / calculation.area).toLocaleString('ru-RU')} ₽/м²</span>
-                      <span>•</span>
-                      <span>Срок: ~{calculation.estimatedDays.min}–{calculation.estimatedDays.max} дней</span>
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setIsProposalOpen(true);
-                      }}
-                      className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-emerald-400 transition shrink-0 active:scale-95 cursor-pointer"
-                      title="Открыть коммерческое предложение / PDF"
-                    >
-                      <Printer className="w-4 h-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        triggerHaptic('light');
-                        setIsShareOpen(true);
-                      }}
-                      className="p-2 rounded-xl bg-white/10 hover:bg-white/15 text-zinc-300 transition shrink-0 active:scale-95 cursor-pointer"
-                      title="Поделиться расчетом / сохранить в Telegram"
-                    >
-                      <Share2 className="w-4 h-4" />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-white/10 text-center text-xs">
-                  <div className="p-1.5 rounded-lg bg-white/5">
-                    <div className="font-bold text-white text-[11px]">0% аванс</div>
-                    <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">Оплата по акту</div>
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-white/5">
-                    <div className="font-bold text-white text-[11px]">Договор</div>
-                    <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">Фикс. цена</div>
-                  </div>
-                  <div className="p-1.5 rounded-lg bg-white/5">
-                    <div className="font-bold text-white text-[11px]">3 года</div>
-                    <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">Гарантия ГОСТ</div>
-                  </div>
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('heavy');
-                    setIsBookingOpen(true);
-                  }}
-                  className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 rounded-xl font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-950/40 transition flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <Calendar className="w-4 h-4 shrink-0" />
-                  <span>Записаться на бесплатный замер (0 ₽) и зафиксировать скидку</span>
-                  <ArrowRight className="w-4 h-4 shrink-0" />
-                </button>
-              </div>
-
-              {/* Сертификат фиксации цены */}
-              <PriceLockCard
-                grandTotal={estimateData.grandTotal}
-                worksTotal={estimateData.worksTotal}
-                materialsTotal={estimateData.materialsTotal}
-                area={calculation.area}
-                estimatedDays={calculation.estimatedDays}
-                onOpenBooking={() => setIsBookingOpen(true)}
-                onOpenPrint={() => setIsProposalOpen(true)}
-              />
-
-              {/* 5. Дополнительные опции ремонта */}
-              <AdditionalOptions
-                options={dynamicOptions}
-                area={area}
-                onToggle={handleToggleOption}
-              />
-
-              {/* 6. Сворачиваемые инженерные параметры */}
-              <div className="bg-white dark:bg-zinc-900 rounded-xl border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden transition-all">
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    setIsEngineeringOpen(!isEngineeringOpen);
-                  }}
-                  className="w-full p-3 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2">
-                    <SlidersHorizontal className="w-3.5 h-3.5 text-zinc-500" />
-                    <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100">
-                      Уточнить санузлы и высоту потолков ({bathroomsCount} узел, {ceilingHeight} м)
+            {/* ГЛАВНЫЙ ИНЖЕНЕРНЫЙ ОФФЕР СМЕТЫ */}
+            <div className="bg-zinc-900 text-white rounded-xl p-4 sm:p-5 border border-zinc-800 shadow-xl space-y-3.5 relative overflow-hidden">
+              <div className="flex items-start justify-between gap-3">
+                <div className="space-y-1">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-2 py-0.5 rounded">
+                      Итоговая смета под ключ
+                    </span>
+                    <span className="text-[11px] text-zinc-400 font-mono font-medium">
+                      {calculation.area} м² • {calculation.propertyType === 'new' ? 'Новостройка' : 'Вторичка'}
                     </span>
                   </div>
+                  <div className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-white mt-1 flex items-baseline gap-2">
+                    <span>{formatCurrency(estimateData.grandTotal)}</span>
+                  </div>
+                  <div className="text-xs text-zinc-300 font-medium flex items-center gap-2">
+                    <span className="font-mono text-emerald-400 font-bold">~{Math.round(estimateData.grandTotal / calculation.area).toLocaleString('ru-RU')} ₽/м²</span>
+                    <span className="text-zinc-600">•</span>
+                    <span className="font-mono text-zinc-400">Срок: ~{calculation.estimatedDays.min}–{calculation.estimatedDays.max} дней</span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setIsProposalOpen(true);
+                    }}
+                    className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-emerald-400 transition shrink-0 active:scale-95 cursor-pointer"
+                    title="Открыть коммерческое предложение / PDF"
+                  >
+                    <Printer className="w-4 h-4" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      triggerHaptic('light');
+                      setIsShareOpen(true);
+                    }}
+                    className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 transition shrink-0 active:scale-95 cursor-pointer"
+                    title="Поделиться расчетом / сохранить в Telegram"
+                  >
+                    <Share2 className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {/* Инженерные триггеры надежности */}
+              <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-zinc-800 text-center text-xs">
+                <div className="p-2 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
+                  <div className="font-bold font-mono text-emerald-400 text-xs">0% аванс</div>
+                  <div className="text-[10px] text-zinc-400 mt-0.5 leading-tight">Оплата по акту КС-2</div>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
+                  <div className="font-bold text-white text-xs">Твёрдая цена</div>
+                  <div className="text-[10px] text-zinc-400 mt-0.5 leading-tight">Фиксация в договоре</div>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
+                  <div className="font-bold font-mono text-emerald-400 text-xs">36 мес.</div>
+                  <div className="text-[10px] text-zinc-400 mt-0.5 leading-tight">СП 71.13330.2017</div>
+                </div>
+              </div>
+
+              {/* Главная кнопка действия (Primary CTA) */}
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('heavy');
+                  setIsBookingOpen(true);
+                }}
+                className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 rounded-xl font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-950/40 transition flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Calendar className="w-4 h-4 shrink-0" />
+                <span>Записаться на бесплатный выезд инженера (0 ₽)</span>
+                <ArrowRight className="w-4 h-4 shrink-0" />
+              </button>
+              <p className="text-[10px] text-center text-zinc-400">
+                Инженер проведет замер лазером, проверит ровность стен и зафиксирует цену в договоре
+              </p>
+            </div>
+
+            {/* Сертификат фиксации цены от удорожания по договору */}
+            <PriceLockCard
+              grandTotal={estimateData.grandTotal}
+              worksTotal={estimateData.worksTotal}
+              materialsTotal={estimateData.materialsTotal}
+              area={calculation.area}
+              estimatedDays={calculation.estimatedDays}
+              onOpenBooking={() => setIsBookingOpen(true)}
+              onOpenPrint={() => setIsProposalOpen(true)}
+            />
+
+            {/* Детальная смета по 35 пунктам ГОСТ */}
+            <div
+              id="estimate-breakdown"
+              className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden transition-all scroll-mt-14"
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('light');
+                  setIsDetailedEstimateOpen(!isDetailedEstimateOpen);
+                }}
+                className="w-full p-3.5 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition cursor-pointer"
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 font-bold">
+                    <FileText className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
+                      <span>Подробная смета по 35 пунктам ГОСТ</span>
+                      <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-sm font-mono">
+                        35 работ
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-zinc-500 mt-0.5">
+                      {isDetailedEstimateOpen ? 'Нажмите, чтобы скрыть детализацию' : 'Раскрыть технологическую карту с ценами за единицу'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-xs font-bold font-mono text-zinc-900 dark:text-zinc-100 hidden sm:inline">
+                    {formatCurrency(estimateData.grandTotal)}
+                  </span>
                   <ChevronDown
-                    className={`w-3.5 h-3.5 text-zinc-400 transition-transform duration-200 ${
-                      isEngineeringOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
+                    className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
+                      isDetailedEstimateOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
                     }`}
                   />
-                </button>
-                {isEngineeringOpen && (
-                  <div className="p-3 pt-0 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in duration-150">
-                    <EngineeringParameters
-                      bathroomsCount={bathroomsCount}
-                      onChangeBathrooms={(b) => setBathroomsCount(b)}
-                      ceilingHeight={ceilingHeight}
-                      onChangeCeiling={(h) => setCeilingHeight(h)}
-                      area={area}
-                      wallArea={estimateData.wallArea}
-                      perimeterRatio={estimateData.perimeterRatio}
-                      finishingEstimate={estimateData.finishingMaterialsEstimate}
-                      wetAreasCost={estimateData.wetAreasCost}
-                      renovationClassId={selectedClassId}
-                    />
-                  </div>
-                )}
-              </div>
+                </div>
+              </button>
+              {isDetailedEstimateOpen && (
+                <div className="p-3 pt-0 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in duration-150">
+                  <DetailedEstimateSection
+                    result={calculation}
+                    company={company}
+                    pricing={pricing}
+                    items={items}
+                    onUpdateItems={handleUpdateItems}
+                    onResetItems={handleResetItems}
+                    excludedItemIds={excludedItemIds}
+                    onToggleItemExclusion={handleToggleItemExclusion}
+                    onRestoreAllItems={handleRestoreAllItems}
+                    estimateData={estimateData}
+                    onOpenBooking={() => setIsBookingOpen(true)}
+                    onOpenShare={() => setIsShareOpen(true)}
+                  />
+                </div>
+              )}
+            </div>
 
-              {/* 7. Детальная смета по 35 пунктам ГОСТ */}
-              <div
-                id="estimate-breakdown"
-                className="bg-white dark:bg-zinc-900 rounded-2xl border border-zinc-200 dark:border-zinc-800 shadow-xs overflow-hidden transition-all scroll-mt-14"
-              >
-                <button
-                  type="button"
-                  onClick={() => {
-                    triggerHaptic('light');
-                    setIsDetailedEstimateOpen(!isDetailedEstimateOpen);
-                  }}
-                  className="w-full p-3.5 flex items-center justify-between text-left hover:bg-zinc-50 dark:hover:bg-zinc-800/60 transition cursor-pointer"
-                >
-                  <div className="flex items-center gap-2.5">
-                    <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-emerald-950/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0 font-bold">
-                      <FileText className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <div className="text-xs font-bold text-zinc-950 dark:text-white flex items-center gap-1.5">
-                        <span>Подробная смета по 35 пунктам ГОСТ</span>
-                        <span className="text-[10px] bg-zinc-100 dark:bg-zinc-800 text-zinc-600 dark:text-zinc-400 px-1.5 py-0.5 rounded-sm font-mono">
-                          35 работ
-                        </span>
-                      </div>
-                      <p className="text-[11px] text-zinc-500 mt-0.5">
-                        {isDetailedEstimateOpen ? 'Нажмите, чтобы скрыть детализацию' : 'Раскрыть технологическую карту с ценами за единицу'}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2 shrink-0">
-                    <span className="text-xs font-bold font-mono text-zinc-900 dark:text-zinc-100 hidden sm:inline">
-                      {formatCurrency(estimateData.grandTotal)}
+            {/* Социальное доказательство, гарантии и экспресс-аудит */}
+            <div
+              id="competitor-audit-banner"
+              className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 rounded-xl p-3 border border-amber-200/80 dark:border-amber-800/50 shadow-xs flex items-center justify-between gap-3 no-print"
+            >
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-8 h-8 rounded-lg bg-amber-500 text-white flex items-center justify-center font-bold shrink-0 shadow-xs">
+                  <SearchCheck className="w-4 h-4" />
+                </div>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-zinc-950 dark:text-white">
+                      Есть смета от другого прораба?
                     </span>
-                    <ChevronDown
-                      className={`w-4 h-4 text-zinc-400 transition-transform duration-200 ${
-                        isDetailedEstimateOpen ? 'rotate-180 text-zinc-900 dark:text-white' : ''
-                      }`}
-                    />
+                    <span className="text-[9px] uppercase font-extrabold px-1.5 py-0.5 rounded-sm bg-amber-200 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200">
+                      Анти-развод
+                    </span>
                   </div>
-                </button>
-                {isDetailedEstimateOpen && (
-                  <div className="p-3 pt-0 border-t border-zinc-100 dark:border-zinc-800 animate-in fade-in duration-150">
-                    <DetailedEstimateSection
-                      result={calculation}
-                      company={company}
-                      pricing={pricing}
-                      items={items}
-                      onUpdateItems={handleUpdateItems}
-                      onResetItems={handleResetItems}
-                      excludedItemIds={excludedItemIds}
-                      onToggleItemExclusion={handleToggleItemExclusion}
-                      onRestoreAllItems={handleRestoreAllItems}
-                      estimateData={estimateData}
-                      onOpenBooking={() => setIsBookingOpen(true)}
-                      onOpenShare={() => setIsShareOpen(true)}
-                    />
-                  </div>
-                )}
+                  <p className="text-[11px] text-zinc-600 dark:text-zinc-300 mt-0.5 leading-snug">
+                    Проверьте её на скрытые доплаты и переплату за 30 секунд
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setIsAuditOpen(true);
+                }}
+                className="py-1.5 px-3 rounded-lg bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-bold text-xs shrink-0 transition shadow-xs flex items-center gap-1 cursor-pointer"
+              >
+                <span>Проверить</span>
+                <ArrowRight className="w-3 h-3" />
+              </button>
+            </div>
+
+            {/* Полный бюджет до заселения с мебелью */}
+            <MoveInBudgetCard grandTotal={estimateData.grandTotal} />
+
+            {/* Стандарты договора и надежности */}
+            <div className="bg-white dark:bg-zinc-900 rounded-xl p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs">
+              <div className="flex items-center gap-1.5 mb-2 px-0.5">
+                <ShieldCheck className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                <span className="text-[11px] font-bold text-zinc-900 dark:text-zinc-100 uppercase tracking-wider">
+                  Стандарты договора и гарантии
+                </span>
+              </div>
+              <div className="grid grid-cols-3 gap-1.5 text-center">
+                <div className="p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                  <span className="block text-xs font-bold text-zinc-950 dark:text-white">100% фикс-цена</span>
+                  <span className="block text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">Без скрытых доплат</span>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                  <span className="block text-xs font-bold text-zinc-950 dark:text-white">0% аванс</span>
+                  <span className="block text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">Оплата по акту</span>
+                </div>
+                <div className="p-2 rounded-lg bg-zinc-50 dark:bg-zinc-800/50">
+                  <span className="block text-xs font-bold text-zinc-950 dark:text-white">36 мес. ГОСТ</span>
+                  <span className="block text-[10px] text-zinc-500 dark:text-zinc-400 mt-0.5 leading-tight">Гарантия в договоре</span>
+                </div>
               </div>
             </div>
-          )}
+          </section>
 
           {/* 8. Социальное доказательство, гарантии и экспресс-аудит */}
           <div
@@ -1229,33 +1022,6 @@ export default function App() {
               >
                 Публичная оферта
               </button>
-              <span>•</span>
-              <button
-                type="button"
-                onClick={() => {
-                  triggerHaptic('light');
-                  setViewMode('pricing');
-                }}
-                className="text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 underline font-semibold cursor-pointer"
-                title="Визуальная настройка расценок на ремонт"
-              >
-                Редактор расценок (/pricing)
-              </button>
-              {isSuperAdmin && (
-                <>
-                  <span>•</span>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      triggerHaptic('medium');
-                      setViewMode('admin');
-                    }}
-                    className="text-emerald-600 dark:text-emerald-400 hover:underline font-bold cursor-pointer"
-                  >
-                    Панель управления (Бот & БД)
-                  </button>
-                </>
-              )}
             </div>
             {company.phone && (
               <div className="text-[11px] text-zinc-500 dark:text-zinc-400 font-medium pt-1">
@@ -1302,6 +1068,25 @@ export default function App() {
             worksTotal={estimateData.worksTotal}
             materialsTotal={estimateData.materialsTotal}
             estimatedDays={calculation.estimatedDays}
+          />
+        )}
+
+        {/* AI Project Scanner Modal (Gemini Flash Multimodal) */}
+        {isAiScannerOpen && (
+          <AiProjectScannerModal
+            isOpen={isAiScannerOpen}
+            onClose={() => setIsAiScannerOpen(false)}
+            onApplyToCalculator={(specs) => {
+              setArea(specs.area);
+              setPropertyType(specs.propertyType);
+              setSelectedClassId(specs.classId);
+              const bCount = (Math.min(3, Math.max(1, specs.bathrooms)) as 1 | 2 | 3);
+              setBathroomsCount(bCount);
+              setTimeout(() => {
+                const el = document.getElementById('sec-estimate');
+                if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }, 100);
+            }}
           />
         )}
 

@@ -18,18 +18,7 @@ export function getEffectiveTelegramUserId(): string | null {
     return String(tgUser.id);
   }
 
-  // 2. URL параметры при открытии прямой ссылки владельца
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const passedId = params.get('admin_id') || params.get('user_id');
-    if (passedId && String(passedId).trim() === SUPERADMIN_TELEGRAM_ID) {
-      return SUPERADMIN_TELEGRAM_ID;
-    }
-  } catch {
-    // ignore
-  }
-
-  // 3. Активная сессия владельца
+  // 2. Активная сессия владельца (только после ввода ключа в AdminAccessGate)
   try {
     const session = sessionStorage.getItem('remont_admin_verified_id');
     if (session && String(session).trim() === SUPERADMIN_TELEGRAM_ID) {
@@ -61,23 +50,7 @@ export function isSuperAdminUser(): boolean {
   }
 
   // Если запуск вне Telegram (в обычном браузере / на компьютере / в режиме превью):
-  // Проверяем параметр admin_id в строке запроса
-  try {
-    const params = new URLSearchParams(window.location.search);
-    const passedId = params.get('admin_id') || params.get('user_id');
-    if (passedId && String(passedId).trim() === SUPERADMIN_TELEGRAM_ID) {
-      try {
-        sessionStorage.setItem('remont_admin_verified_id', SUPERADMIN_TELEGRAM_ID);
-      } catch {
-        // ignore
-      }
-      return true;
-    }
-  } catch {
-    // ignore
-  }
-
-  // Проверяем ранее подтвержденную сессию в sessionStorage браузера
+  // Проверяем подтвержденную сессию в sessionStorage браузера (устанавливается только через ввод мастер-пароля)
   try {
     const session = sessionStorage.getItem('remont_admin_verified_id');
     if (session && String(session).trim() === SUPERADMIN_TELEGRAM_ID) {

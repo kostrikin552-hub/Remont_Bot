@@ -4,171 +4,117 @@ import {
   Sparkles,
   SlidersHorizontal,
   FileCheck,
-  Compass,
-  LayoutGrid,
-  Check,
 } from 'lucide-react';
 import { triggerHaptic } from '../utils/telegram';
 
-export type WizardStepId = 1 | 2 | 3 | 4;
+export type StageId = 'property' | 'tariff' | 'options' | 'estimate';
 
-interface StepWizardNavProps {
-  currentStep: WizardStepId;
-  onSelectStep: (step: WizardStepId) => void;
-  isWizardMode: boolean;
-  onToggleMode: (isWizard: boolean) => void;
-  maxReachedStep: WizardStepId;
+interface StageNavProps {
+  activeStage?: StageId;
+  grandTotal?: number;
 }
 
-export const StepWizardNav: React.FC<StepWizardNavProps> = ({
-  currentStep,
-  onSelectStep,
-  isWizardMode,
-  onToggleMode,
-  maxReachedStep,
+export const StepWizardNav: React.FC<StageNavProps> = ({
+  activeStage: propActiveStage,
+  grandTotal,
 }) => {
-  const STEPS: {
-    id: WizardStepId;
+  const [activeStage, setActiveStage] = React.useState<StageId>(propActiveStage || 'property');
+
+  React.useEffect(() => {
+    if (propActiveStage) {
+      setActiveStage(propActiveStage);
+    }
+  }, [propActiveStage]);
+
+  React.useEffect(() => {
+    const sectionIds: { id: StageId; elementId: string }[] = [
+      { id: 'property', elementId: 'sec-property' },
+      { id: 'tariff', elementId: 'sec-tariff' },
+      { id: 'options', elementId: 'sec-options' },
+      { id: 'estimate', elementId: 'sec-estimate' },
+    ];
+
+    const handleScroll = () => {
+      const scrollPos = window.scrollY + 140;
+      for (let i = sectionIds.length - 1; i >= 0; i--) {
+        const el = document.getElementById(sectionIds[i].elementId);
+        if (el && el.offsetTop <= scrollPos) {
+          setActiveStage(sectionIds[i].id);
+          break;
+        }
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  const STAGES: {
+    id: StageId;
+    anchorId: string;
     title: string;
-    shortTitle: string;
     icon: React.FC<{ className?: string }>;
   }[] = [
     {
-      id: 1,
-      title: 'Объект и площадь',
-      shortTitle: '1. Объект',
+      id: 'property',
+      anchorId: 'sec-property',
+      title: '1. Объект',
       icon: Building2,
     },
     {
-      id: 2,
-      title: 'Класс ремонта',
-      shortTitle: '2. Тариф',
+      id: 'tariff',
+      anchorId: 'sec-tariff',
+      title: '2. Тариф',
       icon: Sparkles,
     },
     {
-      id: 3,
-      title: 'Опции и инженерия',
-      shortTitle: '3. Опции',
+      id: 'options',
+      anchorId: 'sec-options',
+      title: '3. Опции',
       icon: SlidersHorizontal,
     },
     {
-      id: 4,
-      title: 'Смета и фиксация',
-      shortTitle: '4. Смета',
+      id: 'estimate',
+      anchorId: 'sec-estimate',
+      title: '4. Смета',
       icon: FileCheck,
     },
   ];
 
-  const handleStepClick = (stepId: WizardStepId) => {
-    // Разрешаем переход к любому шагу до максимального достигнутого или следующего
-    if (stepId <= maxReachedStep + 1) {
-      triggerHaptic('selection');
-      onSelectStep(stepId);
+  const handleScrollTo = (anchorId: string) => {
+    triggerHaptic('light');
+    const el = document.getElementById(anchorId);
+    if (el) {
+      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
   };
 
-  const progressPercent = Math.round((currentStep / 4) * 100);
-
   return (
-    <div className="bg-white dark:bg-zinc-900 rounded-xl p-2.5 sm:p-3 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-2.5">
-      {/* Верхняя строка: Переключатель режима (Мастер vs Сводка) */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <div className="w-6 h-6 rounded-md bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">
-            <Compass className="w-3.5 h-3.5" />
-          </div>
-          <span className="text-xs font-bold text-zinc-900 dark:text-zinc-100 truncate">
-            {isWizardMode ? `Шаг ${currentStep} из 4: ${STEPS[currentStep - 1].title}` : 'Сводный калькулятор'}
-          </span>
-        </div>
+    <div className="bg-white dark:bg-zinc-900 rounded-xl p-2 sm:p-2.5 border border-zinc-200 dark:border-zinc-800 shadow-xs space-y-1.5 sticky top-[57px] z-20 backdrop-blur-md bg-white/95 dark:bg-zinc-900/95">
+      {/* 4 кнопки быстрой навигации по этапам сметы */}
+      <div className="grid grid-cols-4 gap-1">
+        {STAGES.map((st) => {
+          const isActive = activeStage === st.id;
+          const Icon = st.icon;
 
-        {/* Переключатель Пошаговый мастер / Сводка */}
-        <div className="flex items-center p-0.5 rounded-lg bg-zinc-100 dark:bg-zinc-800 shrink-0">
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onToggleMode(true);
-            }}
-            className={`px-2 py-1 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1 ${
-              isWizardMode
-                ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-xs'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-            }`}
-          >
-            <Compass className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-            <span>Мастер</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              triggerHaptic('light');
-              onToggleMode(false);
-            }}
-            className={`px-2 py-1 text-[11px] font-semibold rounded-md transition-all flex items-center gap-1 ${
-              !isWizardMode
-                ? 'bg-white dark:bg-zinc-900 text-zinc-950 dark:text-white shadow-xs'
-                : 'text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-white'
-            }`}
-          >
-            <LayoutGrid className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-            <span>Сводка</span>
-          </button>
-        </div>
+          return (
+            <button
+              key={st.id}
+              type="button"
+              onClick={() => handleScrollTo(st.anchorId)}
+              className={`py-1.5 px-1 rounded-lg text-center transition-all flex items-center justify-center gap-1 cursor-pointer active:scale-95 ${
+                isActive
+                  ? 'bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 font-bold shadow-xs'
+                  : 'bg-zinc-100 dark:bg-zinc-800 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-200 dark:hover:bg-zinc-700 font-semibold'
+              }`}
+            >
+              <Icon className="w-3 h-3 shrink-0" />
+              <span className="text-[11px] truncate">{st.title}</span>
+            </button>
+          );
+        })}
       </div>
-
-      {/* Полоса прогресса (в режиме мастера) */}
-      {isWizardMode && (
-        <div className="space-y-1.5">
-          <div className="w-full h-1.5 bg-zinc-100 dark:bg-zinc-800 rounded-full overflow-hidden">
-            <div
-              style={{ width: `${progressPercent}%` }}
-              className="h-full bg-emerald-500 rounded-full transition-all duration-300"
-            />
-          </div>
-
-          {/* 4 кнопки шагов */}
-          <div className="grid grid-cols-4 gap-1">
-            {STEPS.map((step) => {
-              const isCurrent = currentStep === step.id;
-              const isPast = step.id < currentStep;
-              const isAccessible = step.id <= maxReachedStep + 1;
-              const Icon = step.icon;
-
-              return (
-                <button
-                  key={step.id}
-                  type="button"
-                  disabled={!isAccessible}
-                  onClick={() => handleStepClick(step.id)}
-                  className={`p-1.5 rounded-lg text-left transition-all flex flex-col items-center sm:items-start text-center sm:text-left ${
-                    isCurrent
-                      ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 font-bold'
-                      : isPast
-                      ? 'bg-zinc-50 dark:bg-zinc-800/60 text-zinc-700 dark:text-zinc-300 hover:bg-zinc-100 dark:hover:bg-zinc-800'
-                      : 'opacity-40 text-zinc-400 cursor-not-allowed'
-                  }`}
-                >
-                  <div className="flex items-center gap-1">
-                    {isPast ? (
-                      <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                    ) : (
-                      <Icon className="w-3 h-3 shrink-0" />
-                    )}
-                    <span className="text-[10px] font-bold hidden sm:inline truncate">
-                      {step.shortTitle}
-                    </span>
-                  </div>
-                  <span className="text-[9px] sm:hidden font-bold leading-tight mt-0.5">
-                    {step.shortTitle}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

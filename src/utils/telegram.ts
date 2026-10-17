@@ -280,7 +280,7 @@ export async function copyTextToClipboard(text: string): Promise<boolean> {
  * Режим калибровки цен доступен ИСКЛЮЧИТЕЛЬНО владельцу бота!
  * Обычные пользователи и клиенты НИКОГДА не получают права админа.
  */
-export function isBotOwner(company?: {
+export function isBotOwner(_company?: {
   ownerId?: string | number;
   adminChatId?: string | number;
   id?: string;
@@ -289,40 +289,27 @@ export function isBotOwner(company?: {
 
   const currentTgUserId = window.Telegram?.WebApp?.initDataUnsafe?.user?.id;
 
-  // 1. Главный владелец платформы (5629144056) всегда имеет права владельца
+  // 1. Главный владелец платформы по Telegram ID (5629144056)
   if (currentTgUserId && String(currentTgUserId) === '5629144056') {
     return true;
   }
 
-  const ownerId = company?.ownerId || company?.adminChatId;
-
-  // 2. Если запуск внутри Telegram:
-  // Строгая сверка Telegram ID текущего пользователя с ID владельца бота
-  if (currentTgUserId && ownerId) {
-    if (String(currentTgUserId) === String(ownerId)) {
-      return true;
-    }
-    // Если текущий ID в Telegram не совпадает с владельцем — доступ КАТЕГОРИЧЕСКИ ЗАПРЕЩЁН
+  // Если открыто внутри Telegram с любого другого аккаунта — доступ КАТЕГОРИЧЕСКИ ЗАПРЕЩЁН
+  if (currentTgUserId && String(currentTgUserId) !== '5629144056') {
     return false;
   }
 
-  // 2. Если запуск по защищенной ссылке владельца из Мастер-Бота (сверка ID владельца)
-  const urlParams = new URLSearchParams(window.location.search);
-  const passedOwnerId = urlParams.get('owner_id') || urlParams.get('admin_id');
-  if (passedOwnerId && ownerId && String(passedOwnerId) === String(ownerId)) {
-    if (currentTgUserId && String(currentTgUserId) !== String(ownerId)) {
-      return false;
+  // 2. Вне Telegram: доступ строго по верифицированной сессии владельца
+  try {
+    const session = sessionStorage.getItem('remont_admin_verified_id');
+    if (session && String(session).trim() === '5629144056') {
+      return true;
     }
-    return true;
+  } catch {
+    // ignore
   }
 
-  // 3. Защищенный токен владельца компании
-  const ownerToken = urlParams.get('owner_token') || urlParams.get('token');
-  if (ownerToken && company?.id && ownerToken === `owner_${company.id}`) {
-    return true;
-  }
-
-  // По умолчанию для всех обычных пользователей: доступ закрыт
+  // Для всех остальных: доступ закрыт
   return false;
 }
 

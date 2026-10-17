@@ -36,16 +36,16 @@ export const PriceLockCard: React.FC<PriceLockCardProps> = ({
   const materialsPercent = Math.max(0, 100 - worksPercent);
 
   return (
-    <div className="bg-gradient-to-br from-zinc-900 via-zinc-900 to-emerald-950 text-white rounded-2xl p-4 sm:p-5 border border-emerald-500/30 shadow-xl space-y-3.5">
+    <div className="bg-zinc-900 text-white rounded-xl p-4 sm:p-5 border border-zinc-800 shadow-xl space-y-3.5">
       {/* Шапка гарантийного сертификата */}
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <div className="flex items-center gap-1.5 flex-wrap">
-            <span className="inline-flex items-center gap-1 text-[10px] font-extrabold uppercase tracking-wider text-emerald-300 bg-emerald-950/90 border border-emerald-600/50 px-2 py-0.5 rounded-sm">
+            <span className="inline-flex items-center gap-1 text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-300 bg-emerald-950/90 border border-emerald-700/60 px-2 py-0.5 rounded">
               <Lock className="w-3 h-3 text-emerald-400" />
-              Фиксация сметы по договору
+              Фиксация сметы по ГОСТ
             </span>
-            <span className="text-[11px] text-zinc-400 font-medium">
+            <span className="text-[11px] text-zinc-400 font-mono font-medium">
               до {lockUntilDate}
             </span>
           </div>
@@ -53,11 +53,11 @@ export const PriceLockCard: React.FC<PriceLockCardProps> = ({
             Защита от удорожания и скрытых доплат
           </h3>
           <p className="text-xs text-zinc-300 leading-relaxed">
-            Сумма сметы не вырастет в процессе ремонта. Вся стоимость работ и расчетные объемы фиксируются в официальном договоре по ГОСТ.
+            Сумма сметы не вырастет в процессе ремонта. Вся стоимость работ и расчетные объемы фиксируются в официальном договоре.
           </p>
         </div>
 
-        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 flex items-center justify-center shrink-0">
+        <div className="w-10 h-10 rounded-xl bg-zinc-800 border border-zinc-700 text-emerald-400 flex items-center justify-center shrink-0">
           <ShieldCheck className="w-5 h-5" />
         </div>
       </div>

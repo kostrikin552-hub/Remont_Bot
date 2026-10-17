@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Moon, Sun, SlidersHorizontal, Tag } from 'lucide-react';
+import { Moon, Sun, SlidersHorizontal, Tag, Phone } from 'lucide-react';
 import { CompanyConfig } from '../types';
 import { triggerHaptic } from '../utils/telegram';
 import { isSuperAdminUser } from '../utils/auth';
@@ -101,6 +101,18 @@ export const Header: React.FC<HeaderProps> = ({
               <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Цены</span>
             </button>
+          )}
+
+          {company.phone && (
+            <a
+              href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
+              onClick={() => triggerHaptic('light')}
+              className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition shrink-0 border border-emerald-200 dark:border-emerald-800/80"
+              title={`Позвонить прорабу: ${company.phone}`}
+              aria-label="Позвонить"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </a>
           )}
 
           <button

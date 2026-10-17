@@ -55,16 +55,16 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
                 <div className="flex items-center justify-between mb-1 min-h-[14px]">
                   {item.popular ? (
                     <span
-                      className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider leading-none ${
+                      className={`text-[9px] font-mono font-bold px-1.5 py-0.5 rounded tracking-wide leading-none ${
                         isSelected
-                          ? 'bg-emerald-500 text-zinc-950 font-black'
-                          : 'bg-emerald-600 text-white shadow-xs'
+                          ? 'bg-emerald-400 text-zinc-950'
+                          : 'bg-emerald-600/90 text-white shadow-xs'
                       }`}
                     >
-                      Хит продаж
+                      ГОСТ Выбор
                     </span>
                   ) : (
-                    <span className="text-[9px] font-medium opacity-50 leading-none">
+                    <span className="text-[9px] font-mono opacity-50 leading-none">
                       {item.badge || 'Пакет'}
                     </span>
                   )}
@@ -82,7 +82,7 @@ export const RenovationClassCards: React.FC<RenovationClassCardsProps> = ({
               </div>
 
               <div className="mt-2 pt-1.5 border-t border-current/15">
-                <span className="text-xs font-extrabold tabular-nums block leading-tight">
+                <span className="text-xs font-bold font-mono tabular-nums block leading-tight">
                   от {formatCurrency(item.pricePerMeter)}
                 </span>
                 <span className="text-[10px] opacity-70 leading-none">за м²</span>
