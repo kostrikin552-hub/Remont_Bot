@@ -549,6 +549,7 @@ export default function App() {
           company={company}
           onOpenAdmin={isSuperAdmin ? () => setViewMode('admin') : undefined}
           onOpenPricing={isSuperAdmin ? () => setViewMode('pricing') : undefined}
+          onOpenScanner={isSuperAdmin ? () => setIsAiScannerOpen(true) : undefined}
         />
 
         {/* Main Unified Calculator */}
@@ -556,35 +557,37 @@ export default function App() {
           {/* Интерактивный якорный трекер этапов расчета */}
           <StepWizardNav grandTotal={estimateData.grandTotal} />
 
-          {/* Инженерный сканер чертежей и смет Banner */}
-          <div className="bg-zinc-900 text-white rounded-xl p-2.5 sm:p-3 border border-zinc-800 shadow-xs flex items-center justify-between gap-3 relative overflow-hidden">
-            <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <Compass className="w-4 h-4" />
-              </div>
-              <div className="min-w-0">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-white">Инженерный сканер чертежей</span>
-                  <span className="text-[9px] font-mono bg-emerald-950/80 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-800/80">
-                    ГОСТ СП 71.13330
-                  </span>
+          {/* Инженерный сканер чертежей и смет Banner — доступен ТОЛЬКО владельцу бота (Режим прораба) */}
+          {isSuperAdmin && (
+            <div className="bg-zinc-900 text-white rounded-xl p-2.5 sm:p-3 border border-zinc-800 shadow-xs flex items-center justify-between gap-3 relative overflow-hidden animate-in fade-in">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                  <Compass className="w-4 h-4" />
                 </div>
-                <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                  Загрузите PDF проекта или смету ➔ цифровой аудит и расчёт за 15 сек
-                </p>
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="text-xs font-bold text-white">Инженерный сканер чертежей</span>
+                    <span className="text-[9px] font-mono bg-emerald-950/80 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-800/80">
+                      Режим прораба
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-zinc-400 truncate mt-0.5">
+                    Загрузите PDF проекта ➔ мгновенный аудит и расчёт сметы на замере
+                  </p>
+                </div>
               </div>
+              <button
+                type="button"
+                onClick={() => {
+                  triggerHaptic('medium');
+                  setIsAiScannerOpen(true);
+                }}
+                className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shrink-0 transition active:scale-95 cursor-pointer shadow-xs"
+              >
+                Скан проекта
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => {
-                triggerHaptic('medium');
-                setIsAiScannerOpen(true);
-              }}
-              className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shrink-0 transition active:scale-95 cursor-pointer shadow-xs"
-            >
-              Скан проекта
-            </button>
-          </div>
+          )}
 
           {/* 1. Базовые параметры объекта: Тип недвижимости и площадь */}
           <section id="sec-property" className="space-y-3 scroll-mt-24">

@@ -14,6 +14,7 @@ import {
   FileText,
   AlertTriangle,
   Download,
+  Paperclip,
 } from 'lucide-react';
 import { CalculationResult, BookingFormState, CompanyConfig, KeyStatus } from '../types';
 import { formatCurrency, triggerHaptic, getTelegramUser, getDetectedBotUsername } from '../utils/telegram';
@@ -85,6 +86,7 @@ export const BookingModal: React.FC<BookingModalProps> = ({
   const [showPrivacyModal, setShowPrivacyModal] = useState(false);
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false);
+  const [projectFile, setProjectFile] = useState<File | null>(null);
 
   const DATE_OPTIONS = ['Сегодня', 'Завтра', 'В субботу', 'В воскресенье'];
 
@@ -273,8 +275,13 @@ export const BookingModal: React.FC<BookingModalProps> = ({
         activeOptionTitles.push(`Telegram: ${effectiveTgUsername}`);
       }
 
+      if (projectFile) {
+        activeOptionTitles.push(`📎 Прикреплен проект: ${projectFile.name}`);
+      }
+
       const combinedComment = [
         form.comment.trim(),
+        projectFile ? `📎 Проект: ${projectFile.name}` : '',
         `Статус ключей: ${form.keyStatus === 'ready' ? 'Ключи на руках' : form.keyStatus === 'in_30_days' ? 'Ключи в течение 30 дней' : 'Дом строится'}`,
         effectiveTgUsername ? `Telegram: ${effectiveTgUsername}` : '',
       ]
@@ -710,6 +717,46 @@ export const BookingModal: React.FC<BookingModalProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+
+                {/* Опциональное прикрепление дизайн-проекта / сметы */}
+                <div className="p-2.5 rounded-xl border border-dashed border-zinc-200 dark:border-zinc-700 bg-zinc-50/50 dark:bg-zinc-800/40 space-y-1.5">
+                  <div className="flex items-center justify-between text-xs font-semibold text-zinc-700 dark:text-zinc-300">
+                    <span className="flex items-center gap-1.5">
+                      <Paperclip className="w-3.5 h-3.5 text-emerald-500" />
+                      <span>Есть дизайн-проект или смета?</span>
+                    </span>
+                    <span className="text-[10px] text-zinc-400 font-normal">по желанию</span>
+                  </div>
+                  <label
+                    htmlFor="bookingProjectFile"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg bg-white dark:bg-zinc-800 border border-zinc-200 dark:border-zinc-700 text-xs text-zinc-600 dark:text-zinc-300 hover:border-emerald-500 transition cursor-pointer"
+                  >
+                    <FileText className="w-4 h-4 text-emerald-500 shrink-0" />
+                    <span className="truncate flex-1">
+                      {projectFile ? projectFile.name : 'Прикрепить PDF или фото проекта (до 50 МБ)'}
+                    </span>
+                    {projectFile && (
+                      <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold shrink-0">
+                        Прикреплен ✓
+                      </span>
+                    )}
+                  </label>
+                  <input
+                    id="bookingProjectFile"
+                    type="file"
+                    accept=".pdf,image/*"
+                    onChange={(e) => {
+                      if (e.target.files && e.target.files[0]) {
+                        setProjectFile(e.target.files[0]);
+                        triggerHaptic('light');
+                      }
+                    }}
+                    className="hidden"
+                  />
+                  <p className="text-[10px] text-zinc-500 dark:text-zinc-400 leading-tight">
+                    Инженер заранее изучит чертежи и подготовит точные объёмы к замеру
+                  </p>
                 </div>
 
                 {/* 152-FZ */}

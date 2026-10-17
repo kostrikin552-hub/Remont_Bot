@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Moon, Sun, SlidersHorizontal, Tag, Phone } from 'lucide-react';
+import { Moon, Sun, SlidersHorizontal, Tag, Phone, Compass } from 'lucide-react';
 import { CompanyConfig } from '../types';
 import { triggerHaptic } from '../utils/telegram';
 import { isSuperAdminUser } from '../utils/auth';
@@ -11,6 +11,7 @@ interface HeaderProps {
   company: CompanyConfig;
   onOpenAdmin?: () => void;
   onOpenPricing?: () => void;
+  onOpenScanner?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -19,6 +20,7 @@ export const Header: React.FC<HeaderProps> = ({
   company,
   onOpenAdmin,
   onOpenPricing,
+  onOpenScanner,
 }) => {
   const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
   const isSuperAdmin = isSuperAdminUser();
@@ -100,6 +102,21 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
               <span>Цены</span>
+            </button>
+          )}
+
+          {isSuperAdmin && onOpenScanner && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenScanner();
+              }}
+              title="Открыть Инженерный сканер чертежей — доступно только владельцу"
+              className="px-2 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-emerald-600 dark:text-emerald-400 text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
+            >
+              <Compass className="w-3.5 h-3.5" />
+              <span>Сканер</span>
             </button>
           )}
 
