@@ -25,8 +25,8 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="px-4 py-2.5 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/80 dark:bg-zinc-900/80 backdrop-blur-md sticky top-0 z-30 transition-colors">
-        <div className="flex items-center gap-2.5 min-w-0">
+      <header className="px-3 py-1.5 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md sticky top-0 z-30 transition-colors">
+        <div className="flex items-center gap-2 min-w-0">
           <button
             type="button"
             onClick={() => {
@@ -34,7 +34,7 @@ export const Header: React.FC<HeaderProps> = ({
               setIsAvatarModalOpen(true);
             }}
             title="Нажмите, чтобы просмотреть и скачать аватарку бота"
-            className="w-8 h-8 rounded-lg overflow-hidden shrink-0 shadow-xs border border-zinc-200/60 dark:border-zinc-800 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-sm cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+            className="w-7 h-7 rounded-lg overflow-hidden shrink-0 shadow-xs border border-zinc-200/60 dark:border-zinc-800 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs cursor-pointer hover:scale-105 active:scale-95 transition-transform"
           >
             <img
               src="/bot_avatar.jpg"
@@ -107,7 +107,7 @@ export const Header: React.FC<HeaderProps> = ({
             <a
               href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
               onClick={() => triggerHaptic('light')}
-              className="w-8 h-8 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition shrink-0 border border-emerald-200 dark:border-emerald-800/80"
+              className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition shrink-0 border border-emerald-200 dark:border-emerald-800/80"
               title={`Позвонить прорабу: ${company.phone}`}
               aria-label="Позвонить"
             >
@@ -122,12 +122,12 @@ export const Header: React.FC<HeaderProps> = ({
               onToggleTheme();
             }}
             aria-label="Сменить тему"
-            className="w-8 h-8 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center transition shrink-0"
+            className="w-7 h-7 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center transition shrink-0"
           >
             {isDark ? (
-              <Sun className="w-4 h-4 text-amber-500" />
+              <Sun className="w-3.5 h-3.5 text-amber-500" />
             ) : (
-              <Moon className="w-4 h-4 text-zinc-800" />
+              <Moon className="w-3.5 h-3.5 text-zinc-800" />
             )}
           </button>
         </div>

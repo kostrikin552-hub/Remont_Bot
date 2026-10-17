@@ -94,7 +94,7 @@ export const AiProjectScannerModal: React.FC<AiProjectScannerModalProps> = ({
     if (!result) return;
     triggerHaptic('light');
     const text =
-      `📋 AI-Аудит чертежей и сметы (Gemini Flash)\n` +
+      `📋 Инженерный аудит чертежей и сметы по ГОСТ\n` +
       `Площадь: ${result.detectedArea} м² (${result.propertyType === 'new' ? 'Новостройка' : 'Вторичка'})\n` +
       `Тариф: ${result.recommendedClass}\n` +
       `Электрика: ${result.electricalPoints} точек | Плитка: ${result.tilingArea} м²\n` +
@@ -122,14 +122,14 @@ export const AiProjectScannerModal: React.FC<AiProjectScannerModalProps> = ({
             <div className="min-w-0">
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h3 className="text-sm font-bold text-zinc-950 dark:text-white truncate">
-                  AI-Сметчик чертежей и смет
+                  Инженерный сканер чертежей и смет
                 </h3>
                 <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                  Gemini Flash 1M
+                  Стандарт ГОСТ
                 </span>
               </div>
               <p className="text-[11px] text-zinc-500 truncate mt-0.5">
-                Парсинг альбомов чертежей PDF, подсчет объемов и поиск уловок за 15 сек
+                Автоматический парсинг чертежей PDF, подсчет объемов и поиск уловок за 15 сек
               </p>
             </div>
           </div>
@@ -227,7 +227,7 @@ export const AiProjectScannerModal: React.FC<AiProjectScannerModalProps> = ({
                   className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-2 transition shadow-lg shadow-emerald-950/30 cursor-pointer"
                 >
                   <Sparkles className="w-4 h-4" />
-                  <span>Запустить AI-анализ чертежа через Gemini Flash</span>
+                  <span>Распознать чертежи и рассчитать смету</span>
                 </button>
               )}
             </>
@@ -250,7 +250,7 @@ export const AiProjectScannerModal: React.FC<AiProjectScannerModalProps> = ({
                   {scanStep === 3 && 'Проверка на коллизии ПУЭ-7, СНиП и скрытые доплаты...'}
                 </h4>
                 <p className="text-[11px] text-zinc-500">
-                  Gemini Flash 2.5 обрабатывает строительные схемы в высоком разрешении
+                  Цифровой модуль обрабатывает строительные схемы в высоком разрешении
                 </p>
               </div>
             </div>
@@ -263,7 +263,7 @@ export const AiProjectScannerModal: React.FC<AiProjectScannerModalProps> = ({
               <div className="p-3.5 rounded-xl bg-zinc-900 text-white border border-zinc-800 space-y-2">
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-mono text-emerald-400 font-bold uppercase tracking-wider text-[10px]">
-                    Результаты AI-распознавания
+                    Результаты цифрового аудита
                   </span>
                   <span className="font-mono text-zinc-400 text-[11px]">
                     Точность по ГОСТ: 98.4%

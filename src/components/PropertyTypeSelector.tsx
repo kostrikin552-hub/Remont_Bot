@@ -65,6 +65,14 @@ export const PropertyTypeSelector: React.FC<PropertyTypeSelectorProps> = ({
       hint: 'Демонтаж дранки, очистка лаг пола, тяжелый мусор',
       icon: Landmark,
     },
+    {
+      id: 'townhouse_apartments',
+      parentType: 'new',
+      title: 'Апартаменты / Таунхаус',
+      badge: 'Бизнес',
+      hint: 'Усиленная шумоизоляция, вентиляция, панорамные зоны',
+      icon: Building2,
+    },
   ];
 
   const handleSelectSubtype = (item: (typeof SUBTYPES)[0]) => {

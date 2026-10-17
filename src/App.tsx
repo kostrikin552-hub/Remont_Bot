@@ -556,21 +556,21 @@ export default function App() {
           {/* Интерактивный якорный трекер этапов расчета */}
           <StepWizardNav grandTotal={estimateData.grandTotal} />
 
-          {/* AI-Сметчик чертежей и смет (Gemini Flash) Banner */}
-          <div className="bg-zinc-900 text-white rounded-xl p-3 border border-zinc-800 shadow-xs flex items-center justify-between gap-3 relative overflow-hidden">
+          {/* Инженерный сканер чертежей и смет Banner */}
+          <div className="bg-zinc-900 text-white rounded-xl p-2.5 sm:p-3 border border-zinc-800 shadow-xs flex items-center justify-between gap-3 relative overflow-hidden">
             <div className="flex items-center gap-2.5 min-w-0">
-              <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
-                <Zap className="w-4 h-4" />
+              <div className="w-7 h-7 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0">
+                <Compass className="w-4 h-4" />
               </div>
               <div className="min-w-0">
                 <div className="flex items-center gap-1.5 flex-wrap">
-                  <span className="text-xs font-bold text-white">AI-Сметчик по чертежам</span>
-                  <span className="text-[9px] font-mono bg-emerald-950/80 text-emerald-400 px-1.5 py-0.5 rounded border border-emerald-800/80">
-                    Gemini Flash
+                  <span className="text-xs font-bold text-white">Инженерный сканер чертежей</span>
+                  <span className="text-[9px] font-mono bg-emerald-950/80 text-emerald-400 px-1.5 py-0.2 rounded border border-emerald-800/80">
+                    ГОСТ СП 71.13330
                   </span>
                 </div>
                 <p className="text-[11px] text-zinc-400 truncate mt-0.5">
-                  Загрузите PDF дизайн-проекта ➔ парсинг чертежей и смета за 15 сек
+                  Загрузите PDF проекта или смету ➔ цифровой аудит и расчёт за 15 сек
                 </p>
               </div>
             </div>
@@ -580,9 +580,9 @@ export default function App() {
                 triggerHaptic('medium');
                 setIsAiScannerOpen(true);
               }}
-              className="px-3 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shrink-0 transition active:scale-95 cursor-pointer shadow-xs"
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-zinc-950 font-bold text-xs shrink-0 transition active:scale-95 cursor-pointer shadow-xs"
             >
-              Скан PDF
+              Скан проекта
             </button>
           </div>
 
@@ -683,9 +683,9 @@ export default function App() {
             <CompetitorTruthTable />
 
             {/* ГЛАВНЫЙ ИНЖЕНЕРНЫЙ ОФФЕР СМЕТЫ */}
-            <div className="bg-zinc-900 text-white rounded-xl p-4 sm:p-5 border border-zinc-800 shadow-xl space-y-3.5 relative overflow-hidden">
+            <div className="bg-zinc-900 text-white rounded-xl p-3 sm:p-3.5 border border-zinc-800 shadow-xl space-y-2.5 relative overflow-hidden">
               <div className="flex items-start justify-between gap-3">
-                <div className="space-y-1">
+                <div className="space-y-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-[10px] font-mono font-bold uppercase tracking-wider text-emerald-400 bg-emerald-950/80 border border-emerald-800/80 px-2 py-0.5 rounded">
                       Итоговая смета под ключ
@@ -694,10 +694,10 @@ export default function App() {
                       {calculation.area} м² • {calculation.propertyType === 'new' ? 'Новостройка' : 'Вторичка'}
                     </span>
                   </div>
-                  <div className="text-2xl sm:text-3xl font-extrabold font-mono tracking-tight text-white mt-1 flex items-baseline gap-2">
+                  <div className="text-xl sm:text-2xl font-extrabold font-mono tracking-tight text-white mt-0.5 flex items-baseline gap-2">
                     <span>{formatCurrency(estimateData.grandTotal)}</span>
                   </div>
-                  <div className="text-xs text-zinc-300 font-medium flex items-center gap-2">
+                  <div className="text-[11px] text-zinc-300 font-medium flex items-center gap-2">
                     <span className="font-mono text-emerald-400 font-bold">~{Math.round(estimateData.grandTotal / calculation.area).toLocaleString('ru-RU')} ₽/м²</span>
                     <span className="text-zinc-600">•</span>
                     <span className="font-mono text-zinc-400">Срок: ~{calculation.estimatedDays.min}–{calculation.estimatedDays.max} дней</span>
@@ -711,7 +711,7 @@ export default function App() {
                       triggerHaptic('light');
                       setIsProposalOpen(true);
                     }}
-                    className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-emerald-400 transition shrink-0 active:scale-95 cursor-pointer"
+                    className="p-1.5 sm:p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-emerald-400 transition shrink-0 active:scale-95 cursor-pointer"
                     title="Открыть коммерческое предложение / PDF"
                   >
                     <Printer className="w-4 h-4" />
@@ -722,7 +722,7 @@ export default function App() {
                       triggerHaptic('light');
                       setIsShareOpen(true);
                     }}
-                    className="p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 transition shrink-0 active:scale-95 cursor-pointer"
+                    className="p-1.5 sm:p-2 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 transition shrink-0 active:scale-95 cursor-pointer"
                     title="Поделиться расчетом / сохранить в Telegram"
                   >
                     <Share2 className="w-4 h-4" />
@@ -731,18 +731,18 @@ export default function App() {
               </div>
 
               {/* Инженерные триггеры надежности */}
-              <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-zinc-800 text-center text-xs">
-                <div className="p-2 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
+              <div className="grid grid-cols-3 gap-1.5 pt-0.5 border-t border-zinc-800 text-center text-xs">
+                <div className="p-1.5 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
                   <div className="font-bold font-mono text-emerald-400 text-xs">0% аванс</div>
-                  <div className="text-[10px] text-zinc-400 mt-0.5 leading-tight">Оплата по акту КС-2</div>
+                  <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">Оплата по акту КС-2</div>
                 </div>
-                <div className="p-2 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
+                <div className="p-1.5 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
                   <div className="font-bold text-white text-xs">Твёрдая цена</div>
-                  <div className="text-[10px] text-zinc-400 mt-0.5 leading-tight">Фиксация в договоре</div>
+                  <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">Фиксация в договоре</div>
                 </div>
-                <div className="p-2 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
+                <div className="p-1.5 rounded-lg bg-zinc-800/80 border border-zinc-700/50">
                   <div className="font-bold font-mono text-emerald-400 text-xs">36 мес.</div>
-                  <div className="text-[10px] text-zinc-400 mt-0.5 leading-tight">СП 71.13330.2017</div>
+                  <div className="text-[9px] text-zinc-400 mt-0.5 leading-tight">СП 71.13330.2017</div>
                 </div>
               </div>
 
@@ -753,13 +753,13 @@ export default function App() {
                   triggerHaptic('heavy');
                   setIsBookingOpen(true);
                 }}
-                className="w-full py-3.5 px-4 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 rounded-xl font-extrabold text-xs sm:text-sm shadow-lg shadow-emerald-950/40 transition flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full py-2.5 px-3 bg-emerald-500 hover:bg-emerald-400 active:scale-[0.99] text-zinc-950 rounded-xl font-extrabold text-xs sm:text-sm shadow-md shadow-emerald-950/40 transition flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Calendar className="w-4 h-4 shrink-0" />
                 <span>Записаться на бесплатный выезд инженера (0 ₽)</span>
                 <ArrowRight className="w-4 h-4 shrink-0" />
               </button>
-              <p className="text-[10px] text-center text-zinc-400">
+              <p className="text-[10px] text-center text-zinc-400 leading-tight">
                 Инженер проведет замер лазером, проверит ровность стен и зафиксирует цену в договоре
               </p>
             </div>
