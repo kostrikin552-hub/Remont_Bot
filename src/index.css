@@ -1,0 +1,103 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    font-family: "Manrope", -apple-system, BlinkMacSystemFont, "SF Pro Text", sans-serif;
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+/* Custom architectural slider thumb */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  background: transparent;
+  touch-action: pan-y;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #18181b;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+  /* Removed CSS transition on thumb to guarantee zero-lag 120fps direct finger tracking */
+}
+
+.dark input[type="range"]::-webkit-slider-thumb {
+  background: #f4f4f5;
+  border: 3px solid #18181b;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+
+input[type="range"]::-webkit-slider-thumb:active {
+  cursor: grabbing;
+  transform: scale(1.1);
+}
+
+input[type="range"]::-moz-range-thumb {
+  width: 24px;
+  height: 24px;
+  border-radius: 9999px;
+  background: #18181b;
+  border: 3px solid #ffffff;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  cursor: grab;
+}
+
+.dark input[type="range"]::-moz-range-thumb {
+  background: #f4f4f5;
+  border: 3px solid #18181b;
+}
+
+.safe-bottom {
+  padding-bottom: max(1.25rem, env(safe-area-inset-bottom));
+}
+
+/* Print & PDF Export styles (Mechanic 2) */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+  body {
+    background: #ffffff !important;
+    color: #000000 !important;
+    font-size: 10pt;
+  }
+  .no-print,
+  button,
+  nav,
+  header,
+  .fixed,
+  #competitor-audit-banner {
+    display: none !important;
+  }
+  #estimate-breakdown {
+    display: block !important;
+    width: 100% !important;
+    margin: 0 !important;
+    padding: 0 !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .print-avoid-break {
+    page-break-inside: avoid;
+  }
+}
+

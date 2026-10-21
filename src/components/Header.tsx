@@ -1,0 +1,153 @@
+import React, { useState } from 'react';
+import { Moon, Sun, SlidersHorizontal, Tag, Phone, ChevronDown, Building2 } from 'lucide-react';
+import { CompanyConfig } from '../types';
+import { triggerHaptic } from '../utils/telegram';
+import { isSuperAdminUser } from '../utils/auth';
+import { AvatarDownloadModal } from './AvatarDownloadModal';
+
+interface HeaderProps {
+  isDark: boolean;
+  onToggleTheme: () => void;
+  company: CompanyConfig;
+  onOpenAdmin?: () => void;
+  onOpenPricing?: () => void;
+  onOpenCompanySelector?: () => void;
+}
+
+export const Header: React.FC<HeaderProps> = ({
+  isDark,
+  onToggleTheme,
+  company,
+  onOpenAdmin,
+  onOpenPricing,
+  onOpenCompanySelector,
+}) => {
+  const [isAvatarModalOpen, setIsAvatarModalOpen] = useState(false);
+  const isSuperAdmin = isSuperAdminUser();
+
+  return (
+    <>
+      <header className="px-3 py-1.5 flex items-center justify-between border-b border-zinc-200/80 dark:border-zinc-800/80 bg-white/90 dark:bg-zinc-900/90 backdrop-blur-md sticky top-0 z-30 transition-colors">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              setIsAvatarModalOpen(true);
+            }}
+            title="Нажмите, чтобы просмотреть и скачать аватарку бота"
+            className="w-7 h-7 rounded-lg overflow-hidden shrink-0 shadow-xs border border-zinc-200/60 dark:border-zinc-800 bg-zinc-900 text-white dark:bg-white dark:text-zinc-950 flex items-center justify-center font-bold text-xs cursor-pointer hover:scale-105 active:scale-95 transition-transform"
+          >
+            <img
+              src="/bot_avatar.jpg"
+              alt={company.name}
+              className="w-full h-full object-cover"
+              referrerPolicy="no-referrer"
+              onError={(e) => {
+                // Graceful fallback to initial letter
+                e.currentTarget.style.display = 'none';
+              }}
+            />
+            <span className="hidden only:block">{company.logoLetter || company.name.charAt(0) || 'Р'}</span>
+          </button>
+          <div className="min-w-0 flex-1">
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenCompanySelector?.();
+              }}
+              className="flex items-center gap-1 text-left group cursor-pointer"
+              title="Нажмите, чтобы сменить компанию или выбрать бота"
+            >
+              <h1 className="text-sm font-bold text-zinc-950 dark:text-white leading-tight group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors truncate">
+                {company.name}
+              </h1>
+              <ChevronDown className="w-3.5 h-3.5 text-zinc-400 shrink-0 group-hover:text-emerald-500 group-hover:translate-y-0.5 transition-transform" />
+            </button>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-[10px] text-zinc-500 dark:text-zinc-400 font-medium shrink-0">
+                {company.city}
+              </span>
+              {company.phone && (
+                <a
+                  href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
+                  className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 hover:underline shrink-0"
+                  title="Позвонить компании"
+                >
+                  · {company.phone}
+                </a>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          {isSuperAdmin && onOpenAdmin && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenAdmin();
+              }}
+              title="Панель управления (доступно владельцу ID: 5629144056)"
+              className="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 shadow-xs transition cursor-pointer active:scale-95"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span>Админка</span>
+            </button>
+          )}
+
+          {isSuperAdmin && onOpenPricing && (
+            <button
+              type="button"
+              onClick={() => {
+                triggerHaptic('light');
+                onOpenPricing();
+              }}
+              title="Открыть Визуальный редактор расценок (/pricing)"
+              className="px-2 py-1.5 rounded-lg border border-zinc-200 dark:border-zinc-700 hover:bg-zinc-100 dark:hover:bg-zinc-800 text-zinc-700 dark:text-zinc-300 text-xs font-bold flex items-center gap-1 shadow-xs transition cursor-pointer"
+            >
+              <Tag className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+              <span>Цены</span>
+            </button>
+          )}
+
+          {company.phone && (
+            <a
+              href={`tel:${company.phone.replace(/[^0-9+]/g, '')}`}
+              onClick={() => triggerHaptic('light')}
+              className="w-7 h-7 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/60 dark:hover:bg-emerald-900/60 text-emerald-600 dark:text-emerald-400 flex items-center justify-center transition shrink-0 border border-emerald-200 dark:border-emerald-800/80"
+              title={`Позвонить прорабу: ${company.phone}`}
+              aria-label="Позвонить"
+            >
+              <Phone className="w-3.5 h-3.5" />
+            </a>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              triggerHaptic('light');
+              onToggleTheme();
+            }}
+            aria-label="Сменить тему"
+            className="w-7 h-7 rounded-lg bg-zinc-100 hover:bg-zinc-200 dark:bg-zinc-800 dark:hover:bg-zinc-700 text-zinc-800 dark:text-zinc-200 flex items-center justify-center transition shrink-0"
+          >
+            {isDark ? (
+              <Sun className="w-3.5 h-3.5 text-amber-500" />
+            ) : (
+              <Moon className="w-3.5 h-3.5 text-zinc-800" />
+            )}
+          </button>
+        </div>
+      </header>
+
+      <AvatarDownloadModal
+        isOpen={isAvatarModalOpen}
+        onClose={() => setIsAvatarModalOpen(false)}
+        botUsername={company.botUsername}
+      />
+    </>
+  );
+};

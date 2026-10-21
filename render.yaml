@@ -1,0 +1,32 @@
+services:
+  # ==============================================================================
+  # Единый монолитный сервис: Бэкенд (FastAPI + aiogram 3) + Фронтенд (dist)
+  # ==============================================================================
+  - type: web
+    name: remont-app
+    env: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: MASTER_BOT_TOKEN
+        sync: false
+      - key: TELEGRAM_PAYMENT_PROVIDER_TOKEN
+        sync: false
+      - key: YOOKASSA_SHOP_ID
+        sync: false
+      - key: BASE_WEBHOOK_URL
+        fromService:
+          type: web
+          name: remont-app
+          property: host
+      - key: MINI_APP_URL
+        fromService:
+          type: web
+          name: remont-app
+          property: host
